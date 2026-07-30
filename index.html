@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INFORMIX BD — Service Management System</title>
+  <meta name="description" content="INFORMIX BD Security & Surveillance Service Management System">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+  <!-- ===== NOTIFICATION CONTAINER ===== -->
+  <div class="ix-notifications" id="notifContainer"></div>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__brand">
+      <div class="sidebar__logo">
+        <img src="assets/logo.svg" alt="INFORMIX BD" id="sidebarLogo">
+      </div>
+    </div>
+    <nav class="sidebar__nav" role="navigation" aria-label="Main navigation">
+      <a href="#dashboard" class="sidebar__link active" data-page="dashboard" data-shortcut="Ctrl+1">
+        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg></span>
+        <span class="sidebar__label">Dashboard</span>
+      </a>
+      <a href="#receipt" class="sidebar__link" data-page="receipt" data-shortcut="Ctrl+2">
+        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg></span>
+        <span class="sidebar__label">Receipt Generator</span>
+      </a>
+      <a href="#customers" class="sidebar__link" data-page="customers" data-shortcut="Ctrl+3">
+        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <span class="sidebar__label">Customers</span>
+      </a>
+      <a href="#analytics" class="sidebar__link" data-page="analytics" data-shortcut="Ctrl+4">
+        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+        <span class="sidebar__label">Analytics</span>
+      </a>
+      <a href="#search" class="sidebar__link" data-page="search" data-shortcut="Ctrl+K">
+        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <span class="sidebar__label">Search</span>
+      </a>
+      <a href="#settings" class="sidebar__link" data-page="settings" data-shortcut="Ctrl+,">
+        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        <span class="sidebar__label">Settings</span>
+      </a>
+    </nav>
+    <div class="sidebar__footer">
+      <button class="sidebar__theme-btn" id="themeToggle" title="Toggle Dark Mode">
+        <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="sidebar__footer-btn" id="backupBtn" title="Backup Data">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 8v8"/><path d="M8 12l4 4 4-4"/></svg>
+      </button>
+      <button class="sidebar__footer-btn" id="shortcutsBtn" title="Keyboard Shortcuts">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6.01" y2="8"/><line x1="10" y1="8" x2="10.01" y2="8"/><line x1="14" y1="8" x2="14.01" y2="8"/><line x1="18" y1="8" x2="18.01" y2="8"/><line x1="8" y1="12" x2="8.01" y2="12"/><line x1="12" y1="12" x2="12.01" y2="12"/><line x1="16" y1="12" x2="16.01" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== MOBILE HEADER ===== -->
+  <header class="mobile-header" id="mobileHeader">
+    <button class="mobile-header__menu" id="mobileMenuBtn">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="mobile-header__brand">
+      <img src="assets/logo.svg" alt="INFORMIX BD" class="mobile-header__logo">
+    </div>
+    <button class="mobile-header__action" id="mobileThemeBtn">
+      <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </header>
+
+  <!-- ===== SIDEBAR OVERLAY (Mobile) ===== -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main" id="main">
+    <!-- Top bar -->
+    <div class="topbar" id="topbar">
+      <div class="topbar__left">
+        <h1 class="topbar__title" id="pageTitle">Dashboard</h1>
+        <span class="topbar__subtitle" id="pageSubtitle">Welcome back. Here's your business overview.</span>
+      </div>
+      <div class="topbar__right">
+        <div class="topbar__search" id="globalSearch">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Search... (Ctrl+K)" id="globalSearchInput" autocomplete="off">
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== DASHBOARD PAGE ==================== -->
+    <section class="page page--active" id="page-dashboard">
+      <div class="stats-grid" id="statsGrid"></div>
+      <div class="dashboard-grid">
+        <div class="card dashboard__activity">
+          <div class="card__header">
+            <h3 class="card__title">Recent Activities</h3>
+            <span class="card__badge" id="activityCount">0</span>
+          </div>
+          <div class="card__body" id="activityTimeline"></div>
+        </div>
+        <div class="card dashboard__top-customers">
+          <div class="card__header">
+            <h3 class="card__title">Top Customers</h3>
+          </div>
+          <div class="card__body" id="topCustomersList"></div>
+        </div>
+        <div class="card dashboard__recent-receipts">
+          <div class="card__header">
+            <h3 class="card__title">Recent Receipts</h3>
+            <a href="#receipt" class="card__link" data-page="receipt">View All</a>
+          </div>
+          <div class="card__body" id="recentReceiptsList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== RECEIPT GENERATOR PAGE ==================== -->
+    <section class="page" id="page-receipt">
+      <div class="receipt-layout">
+        <!-- Form -->
+        <div class="card receipt-form-card">
+          <div class="card__header">
+            <h3 class="card__title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Money Receipt Generator
+            </h3>
+            <span class="receipt-form-card__draft" id="draftIndicator" style="display:none">Draft saved</span>
+          </div>
+          <div class="card__body">
+            <form id="receiptForm" autocomplete="off">
+              <div class="form-row form-row--auto">
+                <div class="form-group">
+                  <label>Receipt Number</label>
+                  <input type="text" id="rReceiptNumber" readonly class="form-input form-input--readonly">
+                </div>
+                <div class="form-group">
+                  <label>Date</label>
+                  <input type="date" id="rDate" class="form-input">
+                </div>
+              </div>
+
+              <div class="form-section-title">Customer Information</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Customer Name <span class="req">*</span></label>
+                  <input type="text" id="rCustomerName" class="form-input" placeholder="e.g. Rahman Enterprises" required>
+                </div>
+                <div class="form-group">
+                  <label>Phone Number</label>
+                  <input type="tel" id="rCustomerPhone" class="form-input" placeholder="+880 1XXXXXXXXX">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="rCustomerAddress" class="form-input" placeholder="Full address">
+              </div>
+
+              <div class="form-section-title">Service Information</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Service Type <span class="req">*</span></label>
+                  <select id="rServiceType" class="form-input" required>
+                    <option value="">Select Service</option>
+                    <option>CCTV Installation</option>
+                    <option>CCTV Repair</option>
+                    <option>DVR/NVR Setup</option>
+                    <option>IP Camera Setup</option>
+                    <option>Network Configuration</option>
+                    <option>Access Control</option>
+                    <option>System Maintenance</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Device Name</label>
+                  <input type="text" id="rDeviceName" class="form-input" placeholder="e.g. Hikvision DVR">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Device Model</label>
+                  <input type="text" id="rDeviceModel" class="form-input" placeholder="e.g. DS-7108NI-K1">
+                </div>
+                <div class="form-group">
+                  <label>Serial Number</label>
+                  <input type="text" id="rDeviceSerial" class="form-input form-input--sm" placeholder="Optional">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Problem Description</label>
+                <textarea id="rProblem" class="form-input" rows="2" placeholder="Describe the issue"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Work Performed</label>
+                <textarea id="rWorkDone" class="form-input" rows="2" placeholder="What was done"></textarea>
+              </div>
+
+              <div class="form-section-title">Service Items</div>
+              <div class="items-table-wrap">
+                <table class="items-table" id="itemsTable">
+                  <thead>
+                    <tr>
+                      <th class="it-sl">SL</th>
+                      <th class="it-desc">Description</th>
+                      <th class="it-qty">Qty</th>
+                      <th class="it-price">Unit Price (৳)</th>
+                      <th class="it-total">Total (৳)</th>
+                      <th class="it-action"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="itemsTableBody"></tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn--secondary btn--sm" id="addItemRow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Item
+              </button>
+
+              <div class="form-section-title">Payment Details</div>
+              <div class="form-row form-row--3">
+                <div class="form-group">
+                  <label>Total Amount <span class="req">*</span></label>
+                  <input type="number" id="rAmount" class="form-input form-input--readonly" min="0" placeholder="0" readonly tabindex="-1">
+                </div>
+                <div class="form-group">
+                  <label>Discount</label>
+                  <input type="number" id="rDiscount" class="form-input" min="0" value="0" placeholder="0">
+                </div>
+                <div class="form-group">
+                  <label>Amount Paid</label>
+                  <input type="number" id="rAmountPaid" class="form-input" min="0" value="0" placeholder="0">
+                </div>
+              </div>
+              <div class="form-row form-row--3">
+                <div class="form-group">
+                  <label>Payment Method</label>
+                  <select id="rPaymentMethod" class="form-input">
+                    <option>Cash</option>
+                    <option>Bank</option>
+                    <option>Mobile Banking</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Payment Status</label>
+                  <select id="rPaymentStatus" class="form-input">
+                    <option>Paid</option>
+                    <option>Partial</option>
+                    <option>Due</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Received By</label>
+                  <input type="text" id="rReceivedBy" class="form-input" placeholder="Staff name">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Notes</label>
+                <textarea id="rNotes" class="form-input" rows="2" placeholder="Additional notes"></textarea>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn--secondary" id="receiptReset">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  Reset
+                </button>
+                <button type="button" class="btn btn--secondary" id="receiptPreview">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Preview
+                </button>
+                <button type="submit" class="btn btn--primary" id="receiptSave">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Save & Print
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Receipts List -->
+        <div class="card receipt-list-card">
+          <div class="card__header">
+            <h3 class="card__title">Generated Receipts</h3>
+            <div class="receipt-list-card__actions">
+              <button class="btn btn--sm btn--ghost" id="exportAllReceipts" title="Export all as ZIP">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export ZIP
+              </button>
+              <button class="btn btn--sm btn--ghost" id="downloadMonthlyReport" title="Monthly Report">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Report
+              </button>
+            </div>
+          </div>
+          <div class="card__body card__body--scroll" id="receiptsList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CUSTOMERS PAGE ==================== -->
+    <section class="page" id="page-customers">
+      <div class="page-header">
+        <div class="page-header__search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="customerSearchInput" class="form-input" placeholder="Search customers...">
+        </div>
+      </div>
+      <div id="customerListView">
+        <div class="customers-grid" id="customersGrid"></div>
+      </div>
+      <div id="customerDetailView" style="display:none">
+        <button class="btn btn--ghost" id="customerBackBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back to Customers
+        </button>
+        <div id="customerDetailContent"></div>
+      </div>
+    </section>
+
+    <!-- ==================== ANALYTICS PAGE ==================== -->
+    <section class="page" id="page-analytics">
+      <div class="analytics-header">
+        <div class="analytics-period">
+          <button class="btn btn--sm btn--active" data-period="6">6M</button>
+          <button class="btn btn--sm btn--ghost" data-period="12">1Y</button>
+          <button class="btn btn--sm btn--ghost" data-period="24">2Y</button>
+        </div>
+      </div>
+      <div class="analytics-grid">
+        <div class="card analytics__revenue-chart">
+          <div class="card__header"><h3 class="card__title">Monthly Revenue</h3></div>
+          <div class="card__body"><canvas id="revenueChart"></canvas></div>
+        </div>
+        <div class="card analytics__jobs-chart">
+          <div class="card__header"><h3 class="card__title">Jobs Per Month</h3></div>
+          <div class="card__body"><canvas id="jobsChart"></canvas></div>
+        </div>
+        <div class="card analytics__payment-chart">
+          <div class="card__header"><h3 class="card__title">Payment Methods</h3></div>
+          <div class="card__body"><canvas id="paymentChart"></canvas></div>
+        </div>
+        <div class="card analytics__status-chart">
+          <div class="card__header"><h3 class="card__title">Payment Status</h3></div>
+          <div class="card__body"><canvas id="statusChart"></canvas></div>
+        </div>
+        <div class="card analytics__services-chart">
+          <div class="card__header"><h3 class="card__title">Top Services</h3></div>
+          <div class="card__body"><canvas id="servicesChart"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SEARCH PAGE ==================== -->
+    <section class="page" id="page-search">
+      <div class="search-page">
+        <div class="search-hero">
+          <div class="search-hero__input-wrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="searchPageInput" class="search-hero__input" placeholder="Search by receipt, customer, phone, device, or service..." autofocus>
+          </div>
+          <div class="search-hero__filters">
+            <button class="search-filter active" data-type="all">All</button>
+            <button class="search-filter" data-type="receipt">Receipts</button>
+            <button class="search-filter" data-type="customer">Customers</button>
+          </div>
+        </div>
+        <div class="search-results" id="searchResults">
+          <div class="search-empty">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <p>Type to search across all receipts and customers</p>
+            <span class="search-hint">Tip: Press Ctrl+K from anywhere to open search</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SETTINGS PAGE ==================== -->
+    <section class="page" id="page-settings">
+      <div class="settings-layout">
+        <div class="card">
+          <div class="card__header">
+            <h3 class="card__title">Company Information</h3>
+          </div>
+          <div class="card__body">
+            <form id="settingsForm">
+              <div class="settings-logo-upload">
+                <div class="settings-logo-preview" id="settingsLogoPreview">
+                  <img src="assets/logo.svg" alt="Logo" id="settingsLogoImg">
+                </div>
+                <div>
+                  <button type="button" class="btn btn--secondary btn--sm" id="uploadLogoBtn">Upload Logo</button>
+                  <input type="file" id="logoFileInput" accept="image/*" style="display:none">
+                  <p class="form-hint">Recommended: SVG or PNG, max 200px height</p>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Company Name</label>
+                  <input type="text" id="sCompanyName" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label>Tagline</label>
+                  <input type="text" id="sTagline" class="form-input">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="sAddress" class="form-input">
+              </div>
+              <div class="form-row form-row--3">
+                <div class="form-group">
+                  <label>Phone</label>
+                  <input type="text" id="sPhone" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label>Email</label>
+                  <input type="email" id="sEmail" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label>Website</label>
+                  <input type="text" id="sWebsite" class="form-input">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Receipt Prefix</label>
+                <input type="text" id="sReceiptPrefix" class="form-input" maxlength="5">
+              </div>
+              <div class="form-group">
+                <label>Terms & Conditions (one per line)</label>
+                <textarea id="sTerms" class="form-input" rows="4"></textarea>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn--primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Save Settings
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__header">
+            <h3 class="card__title">Data Management</h3>
+          </div>
+          <div class="card__body">
+            <div class="settings-actions">
+              <button class="btn btn--secondary" id="exportDataBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export Backup
+              </button>
+              <button class="btn btn--secondary" id="importDataBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Import Backup
+              </button>
+              <input type="file" id="importFileInput" accept=".json" style="display:none">
+              <button class="btn btn--danger" id="clearDataBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Clear All Data
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== RECEIPT PREVIEW MODAL ===== -->
+  <div class="modal-overlay" id="receiptModal" style="display:none" role="dialog" aria-modal="true" aria-label="Receipt Preview">
+    <div class="modal">
+      <div class="modal__header">
+        <h3 class="modal__title">Receipt Preview</h3>
+        <div class="modal__actions">
+          <button class="btn btn--secondary btn--sm" id="modalPrint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print
+          </button>
+          <button class="btn btn--primary btn--sm" id="modalDownloadPDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Download PDF
+          </button>
+          <button class="btn btn--ghost btn--sm" id="modalClose" aria-label="Close preview">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="modal__body" id="receiptPreviewContent"></div>
+    </div>
+  </div>
+
+  <!-- ===== KEYBOARD SHORTCUTS MODAL ===== -->
+  <div class="modal-overlay" id="shortcutsModal" style="display:none" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
+    <div class="modal modal--sm">
+      <div class="modal__header">
+        <h3 class="modal__title">Keyboard Shortcuts</h3>
+        <button class="btn btn--ghost btn--sm" id="shortcutsClose" aria-label="Close shortcuts">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal__body">
+        <div class="shortcuts-grid">
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>1</kbd><span>Dashboard</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>2</kbd><span>Receipt Generator</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>3</kbd><span>Customers</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>4</kbd><span>Analytics</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>K</kbd><span>Search</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>,</kbd><span>Settings</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>N</kbd><span>New Receipt</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>Save Receipt</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>P</kbd><span>Print Receipt</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>B</kbd><span>Toggle Dark Mode</span></div>
+          <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden print container -->
+  <div id="printArea" class="print-area"></div>
+
+  <!-- Scripts -->
+  <script src="js/store.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
