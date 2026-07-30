@@ -708,108 +708,108 @@
     const s = Store.getSettings();
 
     // Layout constants
-    const PW = 210, PH = 297, MG = 18, CW = PW - 2 * MG;
+    const PW = 210, PH = 297, MG = 20, CW = PW - 2 * MG;
     const CLR = {
-      cyan: [0, 204, 255],
-      red: [255, 0, 4],
-      dark: [0, 0, 0],
+      cyan: [0, 150, 199],
+      red: [217, 4, 41],
+      dark: [17, 17, 17],
       muted: [107, 114, 128],
-      lightBg: [248, 250, 252],
-      border: [229, 231, 235],
+      border: [217, 217, 217],
       white: [255, 255, 255],
       signatureLine: [209, 213, 219],
     };
     const FONT = 'helvetica';
-
-    // Currency helper
-    const cur = (v) => '৳ ' + (Number(v) || 0).toLocaleString('en-BD');
-
-    // Text splitter
+    const cur = (v) => 'Taka ' + (Number(v) || 0).toLocaleString('en-BD');
     const split = (t, w) => doc.splitTextToSize(t || '', w || CW);
 
     const logo = getLogoData();
 
-    // ===== DRAW PAGE HEADER (compact for subsequent pages) =====
-    function drawCompactHeader(pg) {
-      if (logo) { try { doc.addImage(logo, 'PNG', MG, MG, 22, 9); } catch (_) {} }
-      doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(...CLR.dark);
-      doc.text(s.companyName || 'INFORMIX BD', PW - MG, MG + 4, { align: 'right' });
+    // ===== PAGE HEADER =====
+    function drawPageHeader(pg) {
+      // Logo top-left
+      if (logo) { try { doc.addImage(logo, 'PNG', MG, MG - 2, 24, 10); } catch (_) {} }
+      // Contact right-aligned
       doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
-      let yy = MG + 8;
+      let yy = MG + 6;
       if (s.phone) { doc.text(s.phone, PW - MG, yy, { align: 'right' }); yy += 3.5; }
       if (s.email) { doc.text(s.email, PW - MG, yy, { align: 'right' }); yy += 3.5; }
-
-      doc.setDrawColor(...CLR.border); doc.setLineWidth(0.5);
-      const divY = Math.max(MG + 14, MG + 28);
+      if (s.website) { doc.text(s.website, PW - MG, yy, { align: 'right' }); }
+      // Cyan divider
+      const divY = MG + 20;
+      doc.setDrawColor(...CLR.cyan); doc.setLineWidth(0.4);
       doc.line(MG, divY, PW - MG, divY);
-
+      // Sub-page invoice ref
       if (pg > 1) {
-        doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(...CLR.dark);
-        doc.text('MONEY RECEIPT', PW / 2, divY + 10, { align: 'center' });
-        doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
-        doc.text(receipt.receiptNumber || '', PW - MG, divY + 10, { align: 'right' });
-        return divY + 18;
+        doc.setFont(FONT, 'italic'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
+        doc.text('INVOICE ' + (receipt.receiptNumber || '') + ' — continued', MG, divY + 8);
+        return divY + 12;
       }
       return divY;
     }
 
-    // ===== FIRST PAGE — Full Header =====
-    const hdrBottom = drawCompactHeader(1);
+    const headerEnd = drawPageHeader(1);
 
-    // Watermark
-    doc.setGState(new doc.GState({ opacity: 0.04 }));
-    doc.setFont(FONT, 'bold'); doc.setFontSize(50); doc.setTextColor(...CLR.cyan);
-    doc.text('INFORMIX BD', PW / 2, PH / 2, { align: 'center', angle: -25 });
+    // ===== WATERMARK =====
+    doc.setGState(new doc.GState({ opacity: 0.035 }));
+    doc.setFont(FONT, 'bold'); doc.setFontSize(55); doc.setTextColor(...CLR.cyan);
+    doc.text('INFORMIX BD', PW / 2, PH / 2 - 20, { align: 'center', angle: -25 });
     doc.setGState(new doc.GState({ opacity: 1 }));
 
-    // Document title
-    const tY = hdrBottom + 14;
-    doc.setFont(FONT, 'bold'); doc.setFontSize(18); doc.setTextColor(...CLR.dark);
-    doc.text('MONEY RECEIPT', PW / 2, tY, { align: 'center' });
+    // ===== INVOICE TITLE & METADATA =====
+    const metaY = headerEnd + 16;
 
-    // Receipt number
-    doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
-    doc.text('Receipt No.', PW - MG, tY - 3, { align: 'right' });
-    doc.setFont(FONT, 'bold'); doc.setFontSize(10); doc.setTextColor(...CLR.dark);
-    doc.text(receipt.receiptNumber || '—', PW - MG, tY + 3, { align: 'right' });
+    // Left: "INVOICE" label + large number
+    doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...CLR.cyan);
+    doc.text('INVOICE', MG, metaY);
+    doc.setFont(FONT, 'bold'); doc.setFontSize(22); doc.setTextColor(...CLR.dark);
+    doc.text(receipt.receiptNumber || '—', MG, metaY + 12);
 
-    // Date & time
+    // Right: Date + Payment status
     const dtStr = receipt.createdAt
       ? Utils.formatDate(receipt.createdAt) + ' at ' + new Date(receipt.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
       : '';
     doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
-    doc.text('Date & Time', MG, tY + 10);
+    doc.text('Date', PW - MG, metaY, { align: 'right' });
     doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(...CLR.dark);
-    doc.text(dtStr || '—', MG, tY + 16);
+    doc.text(dtStr || '—', PW - MG, metaY + 8, { align: 'right' });
+    doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
+    doc.text('Status', PW - MG, metaY + 17, { align: 'right' });
+    doc.setFont(FONT, 'bold'); doc.setFontSize(9);
+    const stClr = receipt.paymentStatus === 'Paid' ? [22, 163, 74] : receipt.paymentStatus === 'Due' ? CLR.red : CLR.dark;
+    doc.setTextColor(...stClr);
+    doc.text(receipt.paymentStatus || '—', PW - MG, metaY + 25, { align: 'right' });
 
-    // ===== CUSTOMER SECTION (two cards) =====
-    const cY = tY + 28;
-    const cW = CW / 2 - 4;
-    // Left card
-    doc.setDrawColor(...CLR.border); doc.setFillColor(...CLR.lightBg);
-    doc.roundedRect(MG, cY, cW, 28, 2, 2, 'FD');
+    // ===== BILL TO SECTION =====
+    const billY = metaY + 36;
+
+    // Thin separator
+    doc.setDrawColor(...CLR.border); doc.setLineWidth(0.3);
+    doc.line(MG, billY - 4, PW - MG, billY - 4);
+
     doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...CLR.cyan);
-    doc.text('CUSTOMER', MG + 8, cY + 8);
-    doc.setFont(FONT, 'bold'); doc.setFontSize(10); doc.setTextColor(...CLR.dark);
-    doc.text(receipt.customerName || '—', MG + 8, cY + 17);
+    doc.text('BILL TO', MG, billY + 2);
+
+    doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(...CLR.dark);
+    doc.text(receipt.customerName || '—', MG, billY + 12);
     doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(...CLR.muted);
-    doc.text(receipt.customerPhone || '', MG + 8, cY + 24);
+    doc.text(receipt.customerPhone || '', MG, billY + 19);
+    if (receipt.customerAddress) {
+      const aL = split(receipt.customerAddress, CW * 0.5);
+      doc.text(aL, MG, billY + 26);
+    }
 
-    // Right card
-    const cX = PW / 2 + 4;
-    doc.roundedRect(cX, cY, cW, 28, 2, 2, 'FD');
+    // Right: Payment method
     doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...CLR.cyan);
-    doc.text('PAYMENT', cX + 8, cY + 8);
-    doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(...CLR.dark);
-    const aLines = split(receipt.customerAddress, cW - 16);
-    doc.text(aLines, cX + 8, cY + 17);
-    doc.setFont(FONT, 'bold'); doc.setFontSize(8); doc.setTextColor(...CLR.dark);
-    doc.text('Method:', cX + 8, cY + 24);
-    doc.setFont(FONT, 'normal');
-    doc.text(' ' + (receipt.paymentMethod || 'Cash'), cX + 18, cY + 24);
+    doc.text('PAYMENT METHOD', PW - MG, billY + 2, { align: 'right' });
+    doc.setFont(FONT, 'bold'); doc.setFontSize(10); doc.setTextColor(...CLR.dark);
+    doc.text(receipt.paymentMethod || 'Cash', PW - MG, billY + 12, { align: 'right' });
+    if (receipt.receivedBy) {
+      doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
+      doc.text('Received by ' + receipt.receivedBy, PW - MG, billY + 19, { align: 'right' });
+    }
 
-    // ===== ITEMS TABLE (autoTable with multi-page) =====
-    const tblTop = cY + 36;
+    // ===== ITEMS TABLE =====
+    const tblTop = billY + 38;
 
     const items = receipt.items && receipt.items.length
       ? receipt.items
@@ -829,46 +829,61 @@
     const paid = receipt.amountPaid || 0;
     const due = Math.max(0, grandTotal - paid);
 
-    // Header height for subsequent pages
-    const SUB_HEADER = 38;
+    const SUB_HEADER = 42;
 
     doc.autoTable({
       startY: tblTop,
       tableWidth: CW,
       margin: { left: MG, right: MG, top: SUB_HEADER },
       head: [[
-        { content: 'SL', styles: { halign: 'center', cellWidth: 12 } },
-        { content: 'Description' },
-        { content: 'Qty', styles: { halign: 'center', cellWidth: 16 } },
-        { content: 'Unit Price', styles: { halign: 'right', cellWidth: 28 } },
-        { content: 'Total', styles: { halign: 'right', cellWidth: 28 } },
+        { content: '#', styles: { halign: 'center', cellWidth: 12 } },
+        { content: 'Item Description' },
+        { content: 'Qty', styles: { halign: 'center', cellWidth: 18 } },
+        { content: 'Unit Price', styles: { halign: 'right', cellWidth: 30 } },
+        { content: 'Total', styles: { halign: 'right', cellWidth: 30 } },
       ]],
       body: bodyRows,
+      theme: 'plain',
       headStyles: {
-        fillColor: CLR.cyan, textColor: CLR.white, fontStyle: 'bold',
-        fontSize: 7.5, lineColor: CLR.cyan,
+        fillColor: [255, 255, 255], textColor: CLR.dark, fontStyle: 'bold',
+        fontSize: 7, lineColor: CLR.dark, lineWidth: 0.5,
+        cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
       },
-      bodyStyles: { fontSize: 8, textColor: CLR.dark, lineColor: CLR.border, lineWidth: 0.3 },
-      alternateRowStyles: { fillColor: [250, 250, 250] },
+      bodyStyles: {
+        fontSize: 8, textColor: CLR.dark,
+        lineColor: [240, 240, 240], lineWidth: 0.3,
+        fillColor: [255, 255, 255],
+        cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+      },
+      alternateRowStyles: { fillColor: [248, 249, 250] },
       columnStyles: {
         0: { halign: 'center', cellWidth: 12 },
-        2: { halign: 'center', cellWidth: 16 },
-        3: { halign: 'right', cellWidth: 28 },
-        4: { halign: 'right', cellWidth: 28 },
+        2: { halign: 'center', cellWidth: 18 },
+        3: { halign: 'right', cellWidth: 30 },
+        4: { halign: 'right', cellWidth: 30 },
       },
       rowPageBreak: 'avoid',
       pageBreak: 'auto',
       didDrawPage: function (d) {
-        // Compact header on every page
-        drawCompactHeader(d.pageNumber);
-        // Footer
+        drawPageHeader(d.pageNumber);
+        // Footer divider
         doc.setDrawColor(...CLR.border); doc.setLineWidth(0.3);
-        doc.line(MG, PH - MG - 14, PW - MG, PH - MG - 14);
-        doc.setFont(FONT, 'normal'); doc.setFontSize(6); doc.setTextColor(...CLR.muted);
-        doc.text('Thank you for choosing ' + (s.companyName || 'INFORMIX BD'), PW / 2, PH - MG - 9, { align: 'center' });
-        doc.text('Page ' + d.pageNumber + ' / {tp}', PW - MG, PH - MG - 3, { align: 'right' });
+        doc.line(MG, PH - MG - 22, PW - MG, PH - MG - 22);
+        // Signature lines on every page
+        var sigW = (CW - 40) / 3;
+        ['Customer', 'Prepared By', 'Authorized'].forEach(function(lbl, i) {
+          var sx = MG + (sigW + 20) * i;
+          doc.setDrawColor(...CLR.signatureLine); doc.setLineWidth(0.3);
+          doc.line(sx, PH - MG - 25, sx + sigW, PH - MG - 25);
+          doc.setFont(FONT, 'normal'); doc.setFontSize(5.5); doc.setTextColor(...CLR.muted);
+          doc.text(lbl, sx + sigW / 2, PH - MG - 22.5, { align: 'center' });
+        });
+        // Footer text
+        doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(...CLR.muted);
+        doc.text('Thank you for choosing ' + (s.companyName || 'INFORMIX BD'), PW / 2, PH - MG - 14, { align: 'center' });
+        doc.text('Page ' + d.pageNumber + ' of {tp}', PW - MG, PH - MG - 3, { align: 'right' });
         if (s.website) doc.text(s.website, MG, PH - MG - 3);
-        doc.text((s.phone || '') + '  |  ' + (s.email || ''), MG, PH - MG - 10);
+        doc.text((s.phone || '') + '  |  ' + (s.email || ''), MG, PH - MG - 15);
       },
     });
 
@@ -883,101 +898,80 @@
       }
     }
 
-    // ===== FINANCIAL SUMMARY (after table) =====
+    // ===== FINANCIAL SUMMARY =====
     let fy = doc.lastAutoTable.finalY || tblTop;
-    const summaryH = 58;
+    fy += 6;
+    const summaryH = 60;
 
-    if (fy + summaryH + 15 > PH - MG - 18) {
+    if (fy + summaryH > PH - MG - 8) {
       doc.addPage();
       totalPages = doc.internal.getNumberOfPages();
-      drawCompactHeader(totalPages);
+      drawPageHeader(totalPages);
       fy = MG + 30;
+      // Re-resolve {tp} since page count changed
+      for (let i = 1; i <= totalPages; i++) {
+        const pg = doc.internal.pages[i];
+        if (pg) {
+          const str = (Array.isArray(pg) ? pg.join('\n') : pg);
+          const replaced = str.replace(/\{tp\}/g, String(totalPages));
+          doc.internal.pages[i] = replaced.split('\n');
+        }
+      }
     }
 
-    const sw = 78;
-    const sx = PW - MG - sw;
-    fy += 6;
-
-    // Summary card
-    doc.setDrawColor(...CLR.border); doc.setFillColor(...CLR.lightBg);
-    doc.roundedRect(sx, fy, sw, summaryH, 2, 2, 'FD');
-
-    let sy = fy + 10;
-    const sumItem = (label, val, clr, bold, sz) => {
-      doc.setFont(FONT, bold ? 'bold' : 'normal');
-      doc.setFontSize(sz || 9); doc.setTextColor(...(clr || CLR.muted));
-      doc.text(label, sx + 10, sy);
-      doc.text(val, sx + sw - 10, sy, { align: 'right' });
-      sy += 7;
+    // Right-aligned totals (no card box — clean text only)
+    let sy = fy;
+    const sumLine = (label, value, opts) => {
+      const o = opts || {};
+      const c = o.color || CLR.dark;
+      doc.setFont(FONT, o.bold ? 'bold' : 'normal');
+      doc.setFontSize(o.size || 9);
+      doc.setTextColor(...c);
+      doc.text(label, CW - 78 + MG, sy);
+      doc.text(value, PW - MG, sy, { align: 'right' });
+      if (o.sep) { doc.setDrawColor(...CLR.border); doc.setLineWidth(0.3); doc.line(CW - 78 + MG, sy + 1.5, PW - MG, sy + 1.5); sy += 2; }
+      sy += (o.size === 12 ? 8 : 6.5);
     };
 
-    sumItem('Subtotal', cur(subtotal), CLR.muted);
-    if (discount > 0) sumItem('Discount', '- ' + cur(discount), CLR.dark);
-    sy += 1;
-    doc.setDrawColor(...CLR.cyan); doc.setLineWidth(0.5);
-    doc.line(sx + 10, sy - 2, sx + sw - 10, sy - 2);
-    sumItem('Grand Total', cur(grandTotal), CLR.red, true, 11);
-    sy += 1;
-    sumItem('Paid', cur(paid), CLR.dark, true);
-    if (due > 0) sumItem('Due', cur(due), CLR.red, true);
+    sumLine('Subtotal', cur(subtotal), { color: CLR.muted });
+    if (discount > 0) sumLine('Discount', '- ' + cur(discount), { color: CLR.muted });
+    sumLine('', '', { sep: true });
+    sumLine('Net Total', cur(grandTotal), { color: CLR.red, bold: true, size: 12 });
+    sumLine('Cash Collected', cur(paid), { color: CLR.dark, bold: true });
+    if (due > 0) sumLine('Due Amount', cur(due), { color: CLR.red, bold: true });
 
     // ===== AMOUNT IN WORDS =====
-    const awY = fy + summaryH + 10;
+    const awY = fy + summaryH + 6;
     const words = numberToWords(grandTotal);
 
-    doc.setDrawColor(...CLR.border); doc.setFillColor(255, 255, 255);
-    doc.roundedRect(MG, awY, CW, 20, 2, 2, 'FD');
+    doc.setDrawColor(...CLR.border); doc.setLineWidth(0.3);
+    doc.line(MG, awY, PW - MG, awY);
     doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...CLR.cyan);
-    doc.text('AMOUNT IN WORDS', MG + 10, awY + 8);
-    doc.setFont(FONT, 'normal'); doc.setFontSize(9); doc.setTextColor(...CLR.dark);
-    doc.text(words, MG + 10, awY + 16);
+    doc.text('AMOUNT IN WORDS', MG, awY + 8);
+    doc.setFont(FONT, 'normal'); doc.setFontSize(8.5); doc.setTextColor(...CLR.dark);
+    doc.text(words, MG, awY + 16);
 
     // ===== NOTES =====
-    const nY = awY + 28;
+    const nY = awY + 26;
     if (receipt.notes) {
       doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...CLR.cyan);
       doc.text('NOTES', MG, nY);
       doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(...CLR.dark);
-      const noteLines = split(receipt.notes, CW);
-      doc.text(noteLines, MG, nY + 8);
+      doc.text(split(receipt.notes, CW), MG, nY + 8);
     }
 
-    // ===== SIGNATURES =====
-    const sigEstimate = receipt.notes ? nY + 16 + (split(receipt.notes, CW).length * 5 || 20) : nY + 10;
-    const sigY = Math.max(sigEstimate, fy + summaryH + 72);
 
-    const drawSignatures = (y) => {
-      const colW = (CW - 40) / 3;
-      const labels = ['Customer Signature', 'Prepared By', 'Authorized Signature'];
-      labels.forEach((label, i) => {
-        const x = MG + (colW + 20) * i;
-        doc.setDrawColor(...CLR.signatureLine); doc.setLineWidth(0.5);
-        doc.line(x, y + 20, x + colW, y + 20);
-        doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(...CLR.muted);
-        doc.text(label, x + colW / 2, y + 28, { align: 'center' });
-      });
-    };
-
-    const checkSpace = (y, needed) => y + needed < PH - MG - 14;
-
-    if (checkSpace(sigY, 40)) {
-      drawSignatures(sigY);
-    } else {
-      doc.addPage();
-      const newTotal = doc.internal.getNumberOfPages();
-      drawCompactHeader(newTotal);
-      drawSignatures(MG + 30);
-    }
-
-    // ===== GENERATED ON INFO =====
-    const genStr = 'Generated on: ' + new Date().toLocaleString('en-US', {
+    // Generated on
+    const genStr = 'Generated on ' + new Date().toLocaleString('en-US', {
       year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
-    doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(...CLR.muted);
+    doc.setFont(FONT, 'italic'); doc.setFontSize(6); doc.setTextColor(...CLR.muted);
     doc.text(genStr, MG, PH - MG - 5);
 
     // ===== SAVE =====
-    doc.save((receipt.receiptNumber || 'receipt') + '.pdf');
+    var safeName = (receipt.customerName || 'Unknown').replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_').slice(0, 24);
+    var datePart = receipt.createdAt ? new Date(receipt.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    doc.save('INFORMIXBD_' + (receipt.receiptNumber || 'INV-0000') + '_' + safeName + '_' + datePart + '.pdf');
     Utils.notify('PDF downloaded successfully', 'success');
   }
 

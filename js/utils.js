@@ -219,7 +219,7 @@ const Utils = (() => {
       if (e.ctrlKey || e.metaKey) key.push('Ctrl');
       if (e.shiftKey) key.push('Shift');
       if (e.altKey) key.push('Alt');
-      if (e.key.length === 1) key.push(e.key.toUpperCase());
+      if (e.key && e.key.length === 1) key.push(e.key.toUpperCase());
       else if (e.key === 'F2') key.push('F2');
       else if (e.key === 'F3') key.push('F3');
       else if (e.key === 'Escape') key.push('Esc');
