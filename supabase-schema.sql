@@ -227,16 +227,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- --------------------------------------------------------------------
 -- Profiles Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Profiles viewable by authenticated users" ON public.profiles;
 CREATE POLICY "Profiles viewable by authenticated users"
   ON public.profiles FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
   ON public.profiles FOR UPDATE
   TO authenticated
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Super Admins have full control over profiles" ON public.profiles;
 CREATE POLICY "Super Admins have full control over profiles"
   ON public.profiles FOR ALL
   TO authenticated
@@ -245,11 +248,13 @@ CREATE POLICY "Super Admins have full control over profiles"
 -- --------------------------------------------------------------------
 -- Business Settings Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Settings viewable by authenticated users" ON public.business_settings;
 CREATE POLICY "Settings viewable by authenticated users"
   ON public.business_settings FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Settings modifiable by Super Admins only" ON public.business_settings;
 CREATE POLICY "Settings modifiable by Super Admins only"
   ON public.business_settings FOR ALL
   TO authenticated
@@ -258,32 +263,70 @@ CREATE POLICY "Settings modifiable by Super Admins only"
 -- --------------------------------------------------------------------
 -- Operational Records Policies (Customers, Invoices, Receipts)
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Authenticated users can read customers" ON public.customers;
 CREATE POLICY "Authenticated users can read customers" ON public.customers FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert customers" ON public.customers;
 CREATE POLICY "Authenticated users can insert customers" ON public.customers FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update customers" ON public.customers;
 CREATE POLICY "Authenticated users can update customers" ON public.customers FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Super Admins can delete customers" ON public.customers;
 CREATE POLICY "Super Admins can delete customers" ON public.customers FOR DELETE TO authenticated USING (public.is_super_admin());
 
+DROP POLICY IF EXISTS "Authenticated users can read invoices" ON public.invoices;
 CREATE POLICY "Authenticated users can read invoices" ON public.invoices FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert invoices" ON public.invoices;
 CREATE POLICY "Authenticated users can insert invoices" ON public.invoices FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update invoices" ON public.invoices;
 CREATE POLICY "Authenticated users can update invoices" ON public.invoices FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Super Admins can delete invoices" ON public.invoices;
 CREATE POLICY "Super Admins can delete invoices" ON public.invoices FOR DELETE TO authenticated USING (public.is_super_admin());
 
+DROP POLICY IF EXISTS "Authenticated users can read invoice items" ON public.invoice_items;
 CREATE POLICY "Authenticated users can read invoice items" ON public.invoice_items FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert invoice items" ON public.invoice_items;
 CREATE POLICY "Authenticated users can insert invoice items" ON public.invoice_items FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update invoice items" ON public.invoice_items;
 CREATE POLICY "Authenticated users can update invoice items" ON public.invoice_items FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can delete invoice items" ON public.invoice_items;
 CREATE POLICY "Authenticated users can delete invoice items" ON public.invoice_items FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can read receipts" ON public.money_receipts;
 CREATE POLICY "Authenticated users can read receipts" ON public.money_receipts FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert receipts" ON public.money_receipts;
 CREATE POLICY "Authenticated users can insert receipts" ON public.money_receipts FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update receipts" ON public.money_receipts;
 CREATE POLICY "Authenticated users can update receipts" ON public.money_receipts FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Super Admins can delete receipts" ON public.money_receipts;
 CREATE POLICY "Super Admins can delete receipts" ON public.money_receipts FOR DELETE TO authenticated USING (public.is_super_admin());
 
+DROP POLICY IF EXISTS "Authenticated users can read receipt items" ON public.receipt_items;
 CREATE POLICY "Authenticated users can read receipt items" ON public.receipt_items FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert receipt items" ON public.receipt_items;
 CREATE POLICY "Authenticated users can insert receipt items" ON public.receipt_items FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update receipt items" ON public.receipt_items;
 CREATE POLICY "Authenticated users can update receipt items" ON public.receipt_items FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can delete receipt items" ON public.receipt_items;
 CREATE POLICY "Authenticated users can delete receipt items" ON public.receipt_items FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can read activities" ON public.activities;
 CREATE POLICY "Authenticated users can read activities" ON public.activities FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert activities" ON public.activities;
 CREATE POLICY "Authenticated users can insert activities" ON public.activities FOR INSERT TO authenticated WITH CHECK (true);
 
 -- ====================================================================
@@ -450,15 +493,18 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('business-assets', 'business-assets', true)
 ON CONFLICT (id) DO NOTHING;
 
+DROP POLICY IF EXISTS "Public Read Access for Business Assets" ON storage.objects;
 CREATE POLICY "Public Read Access for Business Assets"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'business-assets');
 
+DROP POLICY IF EXISTS "Authenticated Users Can Upload Business Assets" ON storage.objects;
 CREATE POLICY "Authenticated Users Can Upload Business Assets"
   ON storage.objects FOR INSERT
   TO authenticated
   WITH CHECK (bucket_id = 'business-assets');
 
+DROP POLICY IF EXISTS "Super Admins Can Delete Business Assets" ON storage.objects;
 CREATE POLICY "Super Admins Can Delete Business Assets"
   ON storage.objects FOR DELETE
   TO authenticated

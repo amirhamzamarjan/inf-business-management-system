@@ -26,12 +26,23 @@
       const togglePasswordBtn = document.getElementById('togglePasswordBtn');
       const logoutBtn = document.getElementById('logoutBtn');
 
+      const authConfigToggle = document.getElementById('authConfigToggle');
+      const authSaveConfigBtn = document.getElementById('authSaveConfigBtn');
+
       if (authForm) {
         authForm.addEventListener('submit', handleAuthSubmit);
       }
 
       if (authModeToggle) {
         authModeToggle.addEventListener('click', toggleSetupMode);
+      }
+
+      if (authConfigToggle) {
+        authConfigToggle.addEventListener('click', toggleAuthConfigSection);
+      }
+
+      if (authSaveConfigBtn) {
+        authSaveConfigBtn.addEventListener('click', saveInlineConfig);
       }
 
       if (togglePasswordBtn) {
@@ -99,11 +110,46 @@
         }
       } catch (err) {
         console.error('Auth error:', err);
-        alertBox.textContent = err.message || 'Authentication failed. Please verify credentials.';
+        let msg = err.message || 'Authentication failed. Please verify credentials.';
+        if (msg.includes('Failed to fetch')) {
+          msg = 'Failed to connect to Supabase. Please verify your Project URL and Anon Key.';
+          toggleAuthConfigSection(true);
+        }
+        alertBox.textContent = msg;
         alertBox.style.display = 'block';
       } finally {
         setButtonLoading(submitBtn, false);
       }
+    }
+
+    function toggleAuthConfigSection(show) {
+      const sec = document.getElementById('authConfigSection');
+      if (!sec) return;
+      const isVisible = typeof show === 'boolean' ? show : sec.style.display !== 'none';
+      sec.style.display = isVisible && typeof show !== 'boolean' ? 'none' : 'block';
+
+      if (sec.style.display !== 'none') {
+        const cfg = SupabaseService.getConfig();
+        const urlInput = document.getElementById('authSupabaseUrl');
+        const keyInput = document.getElementById('authSupabaseKey');
+        if (urlInput) urlInput.value = cfg.url || '';
+        if (keyInput) keyInput.value = cfg.anonKey || '';
+      }
+    }
+
+    function saveInlineConfig() {
+      const url = document.getElementById('authSupabaseUrl')?.value.trim();
+      const key = document.getElementById('authSupabaseKey')?.value.trim();
+      if (!url || !key) {
+        Utils.notify('Please enter both Supabase URL and Anon Key', 'warning');
+        return;
+      }
+      SupabaseService.saveConfig(url, key);
+      Utils.notify('Supabase project connected successfully!', 'success');
+      const sec = document.getElementById('authConfigSection');
+      if (sec) sec.style.display = 'none';
+      const alertBox = document.getElementById('authAlert');
+      if (alertBox) alertBox.style.display = 'none';
     }
 
     function toggleSetupMode() {
