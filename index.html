@@ -3,19 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>INFORMIX BD — Service Management System</title>
-  <meta name="description" content="INFORMIX BD Security & Surveillance Service Management System">
+  <title>INFORMIX BD — Service & Invoice Management System</title>
+  <meta name="description" content="INFORMIX BD Security & Surveillance Service, Invoice, and Money Receipt System">
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/print.css" media="print">
+  <!-- Supabase JS Client v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- jsPDF & autoTable for high-fidelity A4 vector PDFs -->
   <script src="js/lib/jspdf.umd.min.js"></script>
   <script src="js/lib/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
   <!-- ===== NOTIFICATION CONTAINER ===== -->
   <div class="ix-notifications" id="notifContainer"></div>
+
+  <!-- ===== AUTHENTICATION OVERLAY / LOGIN SCREEN ===== -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-card__brand">
+        <img src="assets/logo.svg" alt="INFORMIX BD" class="auth-card__logo">
+        <h2 class="auth-card__title" id="authCardTitle">Sign In</h2>
+        <p class="auth-card__subtitle" id="authCardSubtitle">Access your business invoice & service dashboard</p>
+      </div>
+
+      <div class="auth-card__alert" id="authAlert" style="display:none"></div>
+
+      <form id="authForm" autocomplete="on">
+        <!-- Full Name (Visible only on initial Setup mode) -->
+        <div class="form-group" id="authNameGroup" style="display:none">
+          <label for="authFullName">Full Name <span class="req">*</span></label>
+          <input type="text" id="authFullName" class="form-input" placeholder="e.g. Rahim Ahmed" autocomplete="name">
+        </div>
+
+        <div class="form-group">
+          <label for="authEmail" id="authEmailLabel">Email or Username <span class="req">*</span></label>
+          <input type="text" id="authEmail" class="form-input" placeholder="admin@informixbd.com" required autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label for="authPassword">Password <span class="req">*</span></label>
+          <div class="input-with-icon">
+            <input type="password" id="authPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="password-toggle-btn" id="togglePasswordBtn" title="Show/Hide Password" tabindex="-1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--full" id="authSubmitBtn">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-loader" style="display:none"></span>
+        </button>
+
+        <div class="auth-card__footer">
+          <button type="button" class="auth-toggle-link" id="authModeToggle">
+            First time setup? Create initial Super Admin account
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- ===== SIDEBAR ===== -->
   <aside class="sidebar" id="sidebar">
@@ -26,36 +77,60 @@
     </div>
     <nav class="sidebar__nav" role="navigation" aria-label="Main navigation">
       <a href="#dashboard" class="sidebar__link active" data-page="dashboard" data-shortcut="Ctrl+1">
-        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg></span>
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg></span>
         <span class="sidebar__label">Dashboard</span>
       </a>
-      <a href="#receipt" class="sidebar__link" data-page="receipt" data-shortcut="Ctrl+2">
-        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg></span>
-        <span class="sidebar__label">Receipt Generator</span>
+      <a href="#invoices" class="sidebar__link" data-page="invoices" data-shortcut="Ctrl+2">
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+        <span class="sidebar__label">Invoices</span>
+        <span class="sidebar__badge-new">NEW</span>
       </a>
-      <a href="#customers" class="sidebar__link" data-page="customers" data-shortcut="Ctrl+3">
-        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+      <a href="#receipt" class="sidebar__link" data-page="receipt" data-shortcut="Ctrl+3">
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg></span>
+        <span class="sidebar__label">Money Receipt</span>
+      </a>
+      <a href="#customers" class="sidebar__link" data-page="customers" data-shortcut="Ctrl+4">
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
         <span class="sidebar__label">Customers</span>
       </a>
-      <a href="#analytics" class="sidebar__link" data-page="analytics" data-shortcut="Ctrl+4">
-        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+      <a href="#analytics" class="sidebar__link" data-page="analytics" data-shortcut="Ctrl+5">
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
         <span class="sidebar__label">Analytics</span>
       </a>
       <a href="#search" class="sidebar__link" data-page="search" data-shortcut="Ctrl+K">
-        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
         <span class="sidebar__label">Search</span>
       </a>
+      <!-- Super Admin User Management Link (Shown conditionally) -->
+      <a href="#users" class="sidebar__link" id="navUsersLink" data-page="users" data-shortcut="Ctrl+U" style="display:none">
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <span class="sidebar__label">User Management</span>
+        <span class="sidebar__badge-admin">Admin</span>
+      </a>
       <a href="#settings" class="sidebar__link" data-page="settings" data-shortcut="Ctrl+,">
-        <span class="sidebar__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        <span class="sidebar__icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
         <span class="sidebar__label">Settings</span>
       </a>
     </nav>
+
+    <!-- User Profile & Action Bar in Sidebar Footer -->
+    <div class="sidebar__user-box" id="sidebarUserBox">
+      <div class="sidebar__user-avatar" id="sidebarUserAvatar">U</div>
+      <div class="sidebar__user-info">
+        <div class="sidebar__user-name" id="sidebarUserName">Loading...</div>
+        <div class="sidebar__user-role" id="sidebarUserRole">Staff</div>
+      </div>
+      <button class="sidebar__logout-btn" id="logoutBtn" title="Sign Out">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+
     <div class="sidebar__footer">
       <button class="sidebar__theme-btn" id="themeToggle" title="Toggle Dark Mode">
         <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
-      <button class="sidebar__footer-btn" id="backupBtn" title="Backup Data">
+      <button class="sidebar__footer-btn" id="backupBtn" title="Data Backup">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 8v8"/><path d="M8 12l4 4 4-4"/></svg>
       </button>
       <button class="sidebar__footer-btn" id="shortcutsBtn" title="Keyboard Shortcuts">
@@ -66,13 +141,13 @@
 
   <!-- ===== MOBILE HEADER ===== -->
   <header class="mobile-header" id="mobileHeader">
-    <button class="mobile-header__menu" id="mobileMenuBtn">
+    <button class="mobile-header__menu" id="mobileMenuBtn" aria-label="Toggle Menu">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
     <div class="mobile-header__brand">
       <img src="assets/logo.svg" alt="INFORMIX BD" class="mobile-header__logo">
     </div>
-    <button class="mobile-header__action" id="mobileThemeBtn">
+    <button class="mobile-header__action" id="mobileThemeBtn" aria-label="Toggle Theme">
       <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -83,7 +158,7 @@
 
   <!-- ===== MAIN CONTENT ===== -->
   <main class="main" id="main">
-    <!-- Top bar -->
+    <!-- Top Bar -->
     <div class="topbar" id="topbar">
       <div class="topbar__left">
         <h1 class="topbar__title" id="pageTitle">Dashboard</h1>
@@ -94,6 +169,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" placeholder="Search... (Ctrl+K)" id="globalSearchInput" autocomplete="off">
         </div>
+        <button class="btn btn--primary btn--sm" id="topbarNewInvoiceBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          + New Invoice
+        </button>
       </div>
     </div>
 
@@ -111,49 +190,285 @@
         <div class="card dashboard__top-customers">
           <div class="card__header">
             <h3 class="card__title">Top Customers</h3>
+            <a href="#customers" class="card__link" data-page="customers">View All</a>
           </div>
           <div class="card__body" id="topCustomersList"></div>
         </div>
         <div class="card dashboard__recent-receipts">
           <div class="card__header">
-            <h3 class="card__title">Recent Receipts</h3>
-            <a href="#receipt" class="card__link" data-page="receipt">View All</a>
+            <h3 class="card__title">Recent Invoices & Receipts</h3>
+            <a href="#invoices" class="card__link" data-page="invoices">View Invoices</a>
           </div>
           <div class="card__body" id="recentReceiptsList"></div>
         </div>
       </div>
     </section>
 
-    <!-- ==================== RECEIPT GENERATOR PAGE ==================== -->
+    <!-- ==================== INVOICES PAGE (FAST GENERATOR + MANAGEMENT) ==================== -->
+    <section class="page" id="page-invoices">
+      <div class="subnav-tabs">
+        <button class="subnav-tab active" data-tab="invoice-generator" id="tabInvoiceGen">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Fast Invoice Generator
+        </button>
+        <button class="subnav-tab" data-tab="invoice-history" id="tabInvoiceHist">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Invoice History (<span id="invoiceHistoryCount">0</span>)
+        </button>
+      </div>
+
+      <!-- Tab 1: Fast Invoice Generator -->
+      <div class="tab-content active" id="tabContentInvoiceGen">
+        <div class="invoice-generator-layout">
+          <!-- Invoice Form Card -->
+          <div class="card invoice-form-card">
+            <div class="card__header">
+              <div class="invoice-form-header__left">
+                <h3 class="card__title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  New Invoice
+                </h3>
+                <span class="prepared-by-chip" id="invPreparedByBadge">Prepared by: —</span>
+              </div>
+              <span class="draft-indicator" id="invDraftIndicator" style="display:none">Draft saved</span>
+            </div>
+            <div class="card__body">
+              <form id="invoiceForm" autocomplete="off">
+                <!-- Row 1: Invoice Meta -->
+                <div class="form-row form-row--3">
+                  <div class="form-group">
+                    <label>Invoice Number</label>
+                    <input type="text" id="invNumber" readonly class="form-input form-input--readonly form-input--mono" placeholder="INV-2026-000001">
+                  </div>
+                  <div class="form-group">
+                    <label>Invoice Date <span class="req">*</span></label>
+                    <input type="date" id="invDate" class="form-input" required>
+                  </div>
+                  <div class="form-group">
+                    <label>Due Date</label>
+                    <input type="date" id="invDueDate" class="form-input">
+                  </div>
+                </div>
+
+                <!-- Section: Smart Customer Selection -->
+                <div class="form-section-title">
+                  <span>Bill To (Customer Information)</span>
+                  <span class="form-section-hint">Type to search existing customer or create new automatically</span>
+                </div>
+                <div class="form-row">
+                  <div class="form-group" style="position:relative">
+                    <label>Customer Name <span class="req">*</span></label>
+                    <input type="text" id="invCustomerName" class="form-input" placeholder="e.g. Rahman Enterprises" required autocomplete="off">
+                  </div>
+                  <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="tel" id="invCustomerPhone" class="form-input" placeholder="+880 1XXXXXXXXX">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Customer Email</label>
+                    <input type="email" id="invCustomerEmail" class="form-input" placeholder="customer@example.com">
+                  </div>
+                  <div class="form-group">
+                    <label>Billing Address</label>
+                    <input type="text" id="invCustomerAddress" class="form-input" placeholder="Full address">
+                  </div>
+                </div>
+
+                <!-- Section: Fast Line Items Entry -->
+                <div class="form-section-title">
+                  <span>Invoice Items / Services</span>
+                  <span class="form-section-hint">Press [Enter] on Rate to quickly add next item</span>
+                </div>
+                <div class="items-table-wrap">
+                  <table class="items-table" id="invItemsTable">
+                    <thead>
+                      <tr>
+                        <th class="it-sl">#</th>
+                        <th class="it-desc">Description / Service</th>
+                        <th class="it-qty">Qty</th>
+                        <th class="it-price">Unit Rate (৳)</th>
+                        <th class="it-total">Total (৳)</th>
+                        <th class="it-action"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="invItemsTableBody"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn btn--secondary btn--sm" id="invAddItemBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Item Row
+                </button>
+
+                <!-- Section: Financial Breakdown & Payment Support -->
+                <div class="form-section-title">Payment & Financial Details</div>
+                <div class="invoice-calc-grid">
+                  <div class="invoice-calc-grid__left">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label>Payment Method</label>
+                        <select id="invPaymentMethod" class="form-input">
+                          <option value="Cash">Cash</option>
+                          <option value="Bank Transfer">Bank Transfer</option>
+                          <option value="Card">Card</option>
+                          <option value="bKash / Mobile Banking">bKash / Mobile Banking</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Payment Status</label>
+                        <select id="invPaymentStatus" class="form-input">
+                          <option value="Due">Due</option>
+                          <option value="Partial">Partial</option>
+                          <option value="Paid">Paid</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label>Notes & Terms</label>
+                      <textarea id="invNotes" class="form-input" rows="3" placeholder="Additional notes or payment instructions..."></textarea>
+                    </div>
+                  </div>
+
+                  <!-- Financial Totals Stack -->
+                  <div class="invoice-calc-grid__right">
+                    <div class="totals-card">
+                      <div class="totals-card__row">
+                        <span>Subtotal:</span>
+                        <span class="totals-card__val" id="invSubtotalText">৳0</span>
+                      </div>
+                      <div class="totals-card__row">
+                        <label for="invDiscount">Discount (৳):</label>
+                        <input type="number" id="invDiscount" class="totals-input" min="0" value="0" step="1">
+                      </div>
+                      <div class="totals-card__row">
+                        <label for="invTaxPercent">Tax / VAT (%):</label>
+                        <input type="number" id="invTaxPercent" class="totals-input" min="0" max="100" value="0" step="0.5">
+                      </div>
+                      <div class="totals-card__row">
+                        <label for="invOtherCharges">Other Charges (৳):</label>
+                        <input type="number" id="invOtherCharges" class="totals-input" min="0" value="0" step="1">
+                      </div>
+                      <div class="totals-card__row totals-card__row--grand">
+                        <span>Grand Total:</span>
+                        <span class="totals-card__grand" id="invGrandTotalText">৳0</span>
+                      </div>
+                      <div class="totals-card__row totals-card__row--paid">
+                        <label for="invPaidAmount">Amount Paid (৳):</label>
+                        <input type="number" id="invPaidAmount" class="totals-input totals-input--paid" min="0" value="0" step="1">
+                      </div>
+                      <div class="totals-card__row totals-card__row--due">
+                        <span>Amount Due:</span>
+                        <span class="totals-card__due" id="invDueAmountText">৳0</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Form Action Buttons -->
+                <div class="form-actions">
+                  <button type="button" class="btn btn--secondary" id="invResetBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Reset
+                  </button>
+                  <button type="button" class="btn btn--secondary" id="invPreviewBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Live Preview
+                  </button>
+                  <button type="button" class="btn btn--secondary" id="invSaveDownloadPDFBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Save & PDF
+                  </button>
+                  <button type="submit" class="btn btn--primary" id="invSavePrintBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Save & Print
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Invoice History -->
+      <div class="tab-content" id="tabContentInvoiceHist">
+        <div class="card">
+          <div class="card__header">
+            <div class="invoice-filter-bar">
+              <div class="invoice-search-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="invHistSearchInput" class="form-input" placeholder="Search by invoice #, customer, phone...">
+              </div>
+              <div class="status-filter-pills" id="invStatusPills">
+                <button class="filter-pill active" data-status="All">All</button>
+                <button class="filter-pill" data-status="Paid">Paid</button>
+                <button class="filter-pill" data-status="Partial">Partial</button>
+                <button class="filter-pill" data-status="Due">Due</button>
+              </div>
+            </div>
+            <button class="btn btn--secondary btn--sm" id="exportInvoicesCSVBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </button>
+          </div>
+          <div class="card__body card__body--scroll">
+            <div class="table-responsive">
+              <table class="data-table" id="invoicesTable">
+                <thead>
+                  <tr>
+                    <th>Invoice #</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Grand Total</th>
+                    <th>Paid</th>
+                    <th>Due</th>
+                    <th>Status</th>
+                    <th>Prepared By</th>
+                    <th style="text-align:right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="invoicesTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MONEY RECEIPT PAGE ==================== -->
     <section class="page" id="page-receipt">
       <div class="receipt-layout">
         <!-- Form -->
         <div class="card receipt-form-card">
           <div class="card__header">
-            <h3 class="card__title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Money Receipt Generator
-            </h3>
-            <span class="receipt-form-card__draft" id="draftIndicator" style="display:none">Draft saved</span>
+            <div class="invoice-form-header__left">
+              <h3 class="card__title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
+                Money Receipt Generator
+              </h3>
+              <span class="prepared-by-chip" id="recPreparedByBadge">Prepared by: —</span>
+            </div>
+            <span class="draft-indicator" id="draftIndicator" style="display:none">Draft saved</span>
           </div>
           <div class="card__body">
             <form id="receiptForm" autocomplete="off">
               <div class="form-row form-row--auto">
                 <div class="form-group">
                   <label>Receipt Number</label>
-                  <input type="text" id="rReceiptNumber" readonly class="form-input form-input--readonly">
+                  <input type="text" id="rReceiptNumber" readonly class="form-input form-input--readonly form-input--mono">
                 </div>
                 <div class="form-group">
-                  <label>Date</label>
-                  <input type="date" id="rDate" class="form-input">
+                  <label>Date <span class="req">*</span></label>
+                  <input type="date" id="rDate" class="form-input" required>
                 </div>
               </div>
 
-              <div class="form-section-title">Customer Information</div>
+              <div class="form-section-title">Received From (Customer Information)</div>
               <div class="form-row">
                 <div class="form-group">
                   <label>Customer Name <span class="req">*</span></label>
-                  <input type="text" id="rCustomerName" class="form-input" placeholder="e.g. Rahman Enterprises" required>
+                  <input type="text" id="rCustomerName" class="form-input" placeholder="e.g. Rahman Enterprises" required autocomplete="off">
                 </div>
                 <div class="form-group">
                   <label>Phone Number</label>
@@ -165,20 +480,21 @@
                 <input type="text" id="rCustomerAddress" class="form-input" placeholder="Full address">
               </div>
 
-              <div class="form-section-title">Service Information</div>
+              <div class="form-section-title">Service & Device Information</div>
               <div class="form-row">
                 <div class="form-group">
                   <label>Service Type <span class="req">*</span></label>
                   <select id="rServiceType" class="form-input" required>
                     <option value="">Select Service</option>
                     <option>CCTV Installation</option>
-                    <option>CCTV Repair</option>
-                    <option>DVR/NVR Setup</option>
+                    <option>CCTV Repair & Maintenance</option>
+                    <option>DVR / NVR Setup</option>
                     <option>IP Camera Setup</option>
                     <option>Network Configuration</option>
-                    <option>Access Control</option>
+                    <option>Access Control System</option>
                     <option>System Maintenance</option>
-                    <option>Other</option>
+                    <option>Hardware Replacement</option>
+                    <option>Other Service</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -193,7 +509,7 @@
                 </div>
                 <div class="form-group">
                   <label>Serial Number</label>
-                  <input type="text" id="rDeviceSerial" class="form-input form-input--sm" placeholder="Optional">
+                  <input type="text" id="rDeviceSerial" class="form-input form-input--sm" placeholder="Optional Serial No">
                 </div>
               </div>
               <div class="form-group">
@@ -202,15 +518,15 @@
               </div>
               <div class="form-group">
                 <label>Work Performed</label>
-                <textarea id="rWorkDone" class="form-input" rows="2" placeholder="What was done"></textarea>
+                <textarea id="rWorkDone" class="form-input" rows="2" placeholder="What was done / parts replaced"></textarea>
               </div>
 
-              <div class="form-section-title">Service Items</div>
+              <div class="form-section-title">Service Items & Charges</div>
               <div class="items-table-wrap">
                 <table class="items-table" id="itemsTable">
                   <thead>
                     <tr>
-                      <th class="it-sl">SL</th>
+                      <th class="it-sl">#</th>
                       <th class="it-desc">Description</th>
                       <th class="it-qty">Qty</th>
                       <th class="it-price">Unit Price (৳)</th>
@@ -229,15 +545,15 @@
               <div class="form-section-title">Payment Details</div>
               <div class="form-row form-row--3">
                 <div class="form-group">
-                  <label>Total Amount <span class="req">*</span></label>
+                  <label>Total Amount (৳) <span class="req">*</span></label>
                   <input type="number" id="rAmount" class="form-input form-input--readonly" min="0" placeholder="0" readonly tabindex="-1">
                 </div>
                 <div class="form-group">
-                  <label>Discount</label>
+                  <label>Discount (৳)</label>
                   <input type="number" id="rDiscount" class="form-input" min="0" value="0" placeholder="0">
                 </div>
                 <div class="form-group">
-                  <label>Amount Paid</label>
+                  <label>Amount Paid (৳) <span class="req">*</span></label>
                   <input type="number" id="rAmountPaid" class="form-input" min="0" value="0" placeholder="0">
                 </div>
               </div>
@@ -245,22 +561,23 @@
                 <div class="form-group">
                   <label>Payment Method</label>
                   <select id="rPaymentMethod" class="form-input">
-                    <option>Cash</option>
-                    <option>Bank</option>
-                    <option>Mobile Banking</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Bank">Bank Transfer</option>
+                    <option value="Mobile Banking">Mobile Banking (bKash/Nagad)</option>
+                    <option value="Card">Card</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label>Payment Status</label>
                   <select id="rPaymentStatus" class="form-input">
-                    <option>Paid</option>
-                    <option>Partial</option>
-                    <option>Due</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Partial">Partial</option>
+                    <option value="Due">Due</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label>Received By</label>
-                  <input type="text" id="rReceivedBy" class="form-input" placeholder="Staff name">
+                  <input type="text" id="rReceivedBy" class="form-input" placeholder="Staff Name">
                 </div>
               </div>
               <div class="form-group">
@@ -277,8 +594,12 @@
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   Preview
                 </button>
+                <button type="button" class="btn btn--secondary" id="receiptDownloadPDFBtn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  Save & PDF
+                </button>
                 <button type="submit" class="btn btn--primary" id="receiptSave">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                   Save & Print
                 </button>
               </div>
@@ -292,12 +613,12 @@
             <h3 class="card__title">Generated Receipts</h3>
             <div class="receipt-list-card__actions">
               <button class="btn btn--sm btn--ghost" id="exportAllReceipts" title="Export all as ZIP">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export ZIP
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ZIP
               </button>
               <button class="btn btn--sm btn--ghost" id="downloadMonthlyReport" title="Monthly Report">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                Report
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                CSV
               </button>
             </div>
           </div>
@@ -311,8 +632,12 @@
       <div class="page-header">
         <div class="page-header__search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="customerSearchInput" class="form-input" placeholder="Search customers...">
+          <input type="text" id="customerSearchInput" class="form-input" placeholder="Search customers by name, phone, address...">
         </div>
+        <button class="btn btn--primary btn--sm" id="addNewCustomerBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          + Add Customer
+        </button>
       </div>
       <div id="customerListView">
         <div class="customers-grid" id="customersGrid"></div>
@@ -341,7 +666,7 @@
           <div class="card__body"><canvas id="revenueChart"></canvas></div>
         </div>
         <div class="card analytics__jobs-chart">
-          <div class="card__header"><h3 class="card__title">Jobs Per Month</h3></div>
+          <div class="card__header"><h3 class="card__title">Transactions Per Month</h3></div>
           <div class="card__body"><canvas id="jobsChart"></canvas></div>
         </div>
         <div class="card analytics__payment-chart">
@@ -365,10 +690,11 @@
         <div class="search-hero">
           <div class="search-hero__input-wrap">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="searchPageInput" class="search-hero__input" placeholder="Search by receipt, customer, phone, device, or service..." autofocus>
+            <input type="text" id="searchPageInput" class="search-hero__input" placeholder="Search by invoice, receipt, customer, phone, device..." autofocus>
           </div>
           <div class="search-hero__filters">
             <button class="search-filter active" data-type="all">All</button>
+            <button class="search-filter" data-type="invoice">Invoices</button>
             <button class="search-filter" data-type="receipt">Receipts</button>
             <button class="search-filter" data-type="customer">Customers</button>
           </div>
@@ -376,8 +702,41 @@
         <div class="search-results" id="searchResults">
           <div class="search-empty">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <p>Type to search across all receipts and customers</p>
+            <p>Type to search across all invoices, receipts, and customers</p>
             <span class="search-hint">Tip: Press Ctrl+K from anywhere to open search</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== USERS MANAGEMENT PAGE (SUPER ADMIN) ==================== -->
+    <section class="page" id="page-users">
+      <div class="card">
+        <div class="card__header">
+          <div>
+            <h3 class="card__title">User Management</h3>
+            <p class="card__subtitle">Super Admin control over system users, roles, and status</p>
+          </div>
+          <button class="btn btn--primary btn--sm" id="addNewUserBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            + Add New User
+          </button>
+        </div>
+        <div class="card__body card__body--scroll">
+          <div class="table-responsive">
+            <table class="data-table" id="usersTable">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Created Date</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -386,9 +745,10 @@
     <!-- ==================== SETTINGS PAGE ==================== -->
     <section class="page" id="page-settings">
       <div class="settings-layout">
+        <!-- Company Profile Card -->
         <div class="card">
           <div class="card__header">
-            <h3 class="card__title">Company Information</h3>
+            <h3 class="card__title">Company Profile & Branding</h3>
           </div>
           <div class="card__body">
             <form id="settingsForm">
@@ -399,7 +759,7 @@
                 <div>
                   <button type="button" class="btn btn--secondary btn--sm" id="uploadLogoBtn">Upload Logo</button>
                   <input type="file" id="logoFileInput" accept="image/*" style="display:none">
-                  <p class="form-hint">Recommended: SVG or PNG, max 200px height</p>
+                  <p class="form-hint">Recommended: SVG or PNG, transparent background</p>
                 </div>
               </div>
               <div class="form-row">
@@ -430,10 +790,44 @@
                   <input type="text" id="sWebsite" class="form-input">
                 </div>
               </div>
-              <div class="form-group">
-                <label>Receipt Prefix</label>
-                <input type="text" id="sReceiptPrefix" class="form-input" maxlength="5">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Invoice Prefix</label>
+                  <input type="text" id="sInvoicePrefix" class="form-input" maxlength="6" placeholder="INV">
+                </div>
+                <div class="form-group">
+                  <label>Receipt Prefix</label>
+                  <input type="text" id="sReceiptPrefix" class="form-input" maxlength="6" placeholder="INF">
+                </div>
               </div>
+
+              <!-- Bank & Mobile Banking Details -->
+              <div class="form-section-title">Bank & Digital Payment Details</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Bank Name</label>
+                  <input type="text" id="sBankName" class="form-input" placeholder="e.g. City Bank Bangladesh">
+                </div>
+                <div class="form-group">
+                  <label>Account Name</label>
+                  <input type="text" id="sAccountName" class="form-input" placeholder="e.g. INFORMIX BD">
+                </div>
+              </div>
+              <div class="form-row form-row--3">
+                <div class="form-group">
+                  <label>Account Number</label>
+                  <input type="text" id="sAccountNumber" class="form-input" placeholder="e.g. 1102938475001">
+                </div>
+                <div class="form-group">
+                  <label>Branch</label>
+                  <input type="text" id="sBranch" class="form-input" placeholder="e.g. Banani Branch">
+                </div>
+                <div class="form-group">
+                  <label>bKash / Merchant Number</label>
+                  <input type="text" id="sBkash" class="form-input" placeholder="+8801XXXXXXXXX">
+                </div>
+              </div>
+
               <div class="form-group">
                 <label>Terms & Conditions (one per line)</label>
                 <textarea id="sTerms" class="form-input" rows="4"></textarea>
@@ -448,25 +842,48 @@
           </div>
         </div>
 
+        <!-- Supabase Connection & Configuration Card -->
         <div class="card">
           <div class="card__header">
-            <h3 class="card__title">Data Management</h3>
+            <h3 class="card__title">Supabase Database Connection</h3>
+          </div>
+          <div class="card__body">
+            <div class="supabase-status-box" id="supabaseStatusBox">
+              <span class="status-indicator-dot" id="supabaseStatusDot"></span>
+              <span id="supabaseStatusText">Checking connection...</span>
+            </div>
+            <form id="supabaseConfigForm" style="margin-top:14px">
+              <div class="form-group">
+                <label>Supabase Project URL</label>
+                <input type="url" id="sSupabaseUrl" class="form-input form-input--mono" placeholder="https://your-project.supabase.co">
+              </div>
+              <div class="form-group">
+                <label>Supabase Anon Key</label>
+                <input type="password" id="sSupabaseAnonKey" class="form-input form-input--mono" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+              </div>
+              <button type="submit" class="btn btn--secondary btn--sm">
+                Update Supabase Credentials
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Data Management Card -->
+        <div class="card">
+          <div class="card__header">
+            <h3 class="card__title">Data Backup & Export</h3>
           </div>
           <div class="card__body">
             <div class="settings-actions">
               <button class="btn btn--secondary" id="exportDataBtn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export Backup
+                Export JSON Backup
               </button>
               <button class="btn btn--secondary" id="importDataBtn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Import Backup
               </button>
               <input type="file" id="importFileInput" accept=".json" style="display:none">
-              <button class="btn btn--danger" id="clearDataBtn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Clear All Data
-              </button>
             </div>
           </div>
         </div>
@@ -474,11 +891,34 @@
     </section>
   </main>
 
+  <!-- ===== INVOICE PREVIEW MODAL (MINIMAL LUXURY) ===== -->
+  <div class="modal-overlay" id="invoiceModal" style="display:none" role="dialog" aria-modal="true" aria-label="Invoice Preview">
+    <div class="modal modal--luxury">
+      <div class="modal__header">
+        <h3 class="modal__title">Invoice Preview</h3>
+        <div class="modal__actions">
+          <button class="btn btn--secondary btn--sm" id="invModalPrint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print
+          </button>
+          <button class="btn btn--primary btn--sm" id="invModalDownloadPDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Download PDF
+          </button>
+          <button class="btn btn--ghost btn--sm" id="invModalClose" aria-label="Close preview">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="modal__body modal__body--preview" id="invoicePreviewContent"></div>
+    </div>
+  </div>
+
   <!-- ===== RECEIPT PREVIEW MODAL ===== -->
   <div class="modal-overlay" id="receiptModal" style="display:none" role="dialog" aria-modal="true" aria-label="Receipt Preview">
-    <div class="modal">
+    <div class="modal modal--luxury">
       <div class="modal__header">
-        <h3 class="modal__title">Receipt Preview</h3>
+        <h3 class="modal__title">Money Receipt Preview</h3>
         <div class="modal__actions">
           <button class="btn btn--secondary btn--sm" id="modalPrint">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -493,7 +933,98 @@
           </button>
         </div>
       </div>
-      <div class="modal__body" id="receiptPreviewContent"></div>
+      <div class="modal__body modal__body--preview" id="receiptPreviewContent"></div>
+    </div>
+  </div>
+
+  <!-- ===== USER MANAGEMENT MODAL (Create / Edit User) ===== -->
+  <div class="modal-overlay" id="userModal" style="display:none" role="dialog" aria-modal="true">
+    <div class="modal modal--sm">
+      <div class="modal__header">
+        <h3 class="modal__title" id="userModalTitle">Add New User</h3>
+        <button class="btn btn--ghost btn--sm" id="userModalClose">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal__body">
+        <form id="userForm">
+          <input type="hidden" id="uUserId">
+          <div class="form-group">
+            <label>Full Name <span class="req">*</span></label>
+            <input type="text" id="uFullName" class="form-input" placeholder="e.g. Rahim Ahmed" required>
+          </div>
+          <div class="form-group">
+            <label>Email Address <span class="req">*</span></label>
+            <input type="email" id="uEmail" class="form-input" placeholder="user@informixbd.com" required>
+          </div>
+          <div class="form-group" id="uPasswordGroup">
+            <label>Password <span class="req" id="uPasswordReq">*</span></label>
+            <input type="password" id="uPassword" class="form-input" placeholder="Minimum 6 characters">
+            <p class="form-hint" id="uPasswordHint" style="display:none">Leave blank to keep existing password</p>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Role</label>
+              <select id="uRole" class="form-input">
+                <option value="user">User (Staff)</option>
+                <option value="super_admin">Super Admin</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select id="uStatus" class="form-input">
+                <option value="active">Active</option>
+                <option value="inactive">Disabled</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-actions" style="margin-top:16px">
+            <button type="button" class="btn btn--secondary" id="userModalCancel">Cancel</button>
+            <button type="submit" class="btn btn--primary" id="userModalSave">Save User</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CUSTOMER MODAL (Add / Edit) ===== -->
+  <div class="modal-overlay" id="customerModal" style="display:none" role="dialog" aria-modal="true">
+    <div class="modal modal--sm">
+      <div class="modal__header">
+        <h3 class="modal__title" id="custModalTitle">Add Customer</h3>
+        <button class="btn btn--ghost btn--sm" id="custModalClose">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal__body">
+        <form id="customerForm">
+          <input type="hidden" id="cCustomerId">
+          <div class="form-group">
+            <label>Customer / Company Name <span class="req">*</span></label>
+            <input type="text" id="cName" class="form-input" placeholder="e.g. Sarah Tech Solutions" required>
+          </div>
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="cPhone" class="form-input" placeholder="+880 1XXXXXXXXX">
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="cEmail" class="form-input" placeholder="client@example.com">
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <input type="text" id="cAddress" class="form-input" placeholder="Full address">
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="cNotes" class="form-input" rows="2" placeholder="Special requirements or client notes..."></textarea>
+          </div>
+          <div class="form-actions" style="margin-top:16px">
+            <button type="button" class="btn btn--secondary" id="custModalCancel">Cancel</button>
+            <button type="submit" class="btn btn--primary">Save Customer</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -509,14 +1040,16 @@
       <div class="modal__body">
         <div class="shortcuts-grid">
           <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>1</kbd><span>Dashboard</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>2</kbd><span>Receipt Generator</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>3</kbd><span>Customers</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>4</kbd><span>Analytics</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>2</kbd><span>Invoices</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>3</kbd><span>Money Receipts</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>4</kbd><span>Customers</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>5</kbd><span>Analytics</span></div>
           <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>K</kbd><span>Search</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>U</kbd><span>User Management</span></div>
           <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>,</kbd><span>Settings</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>N</kbd><span>New Receipt</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>Save Receipt</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>P</kbd><span>Print Receipt</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>N</kbd><span>New Document</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>Save / PDF</span></div>
+          <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>P</kbd><span>Save & Print</span></div>
           <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>B</kbd><span>Toggle Dark Mode</span></div>
           <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
         </div>
@@ -527,7 +1060,8 @@
   <!-- Hidden print container -->
   <div id="printArea" class="print-area"></div>
 
-  <!-- Scripts -->
+  <!-- Application Scripts -->
+  <script src="js/supabase.js"></script>
   <script src="js/store.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/app.js"></script>

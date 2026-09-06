@@ -1,316 +1,259 @@
-/* ============================================================
-   INFORMIX BD — Data Storage Layer (LocalStorage + API-ready)
-   ============================================================ */
+/* ====================================================================
+   INFORMIX BD — Data Storage & State Management Layer
+   Supabase Database Adapter + Reactive Event Bus + Draft Management
+   ==================================================================== */
+
 const Store = (() => {
-  const KEYS = {
-    customers: 'ix_customers',
-    receipts: 'ix_receipts',
-    settings: 'ix_settings',
-    activities: 'ix_activities',
-    drafts: 'ix_drafts',
+  'use strict';
+
+  const DRAFT_KEYS = {
+    invoice: 'ix_invoice_draft',
+    receipt: 'ix_receipt_draft',
+    theme: 'ix_theme',
   };
 
-  const DEFAULT_SETTINGS = {
-    companyName: 'INFORMIX BD',
-    tagline: 'Security & Surveillance Solutions',
-    address: 'Dhaka, Bangladesh',
-    phone: '+880 1XXXXXXXXX',
-    email: 'info@informixbd.com',
-    website: 'www.informixbd.com',
-    logo: '',
-    terms: [
-      'Service charges are non-refundable.',
-      'Warranty applies only to specified parts.',
-      'Keep this receipt for future support.',
-    ],
-    currency: '৳',
-    receiptPrefix: 'INF',
-    theme: 'light',
-  };
-
-  /* ---- helpers ---- */
-  function _read(key) {
-    try { return JSON.parse(localStorage.getItem(key)) || null; } catch { return null; }
-  }
-  function _write(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
-    _emit(key, data);
-  }
-  function _id() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  }
-
-  /* ---- event bus ---- */
+  // Event bus for reactive UI updates
   const listeners = {};
-  function _emit(key, data) {
-    (listeners[key] || []).forEach(fn => fn(data));
-  }
-  function on(key, fn) {
-    if (!listeners[key]) listeners[key] = [];
-    listeners[key].push(fn);
-    return () => { listeners[key] = listeners[key].filter(f => f !== fn); };
+  function on(event, callback) {
+    if (!listeners[event]) listeners[event] = [];
+    listeners[event].push(callback);
+    return () => {
+      listeners[event] = listeners[event].filter(fn => fn !== callback);
+    };
   }
 
-  /* ---- settings ---- */
-  function getSettings() {
-    return { ...DEFAULT_SETTINGS, ...(_read(KEYS.settings) || {}) };
+  function emit(event, data) {
+    (listeners[event] || []).forEach(fn => {
+      try { fn(data); } catch (err) { console.error('Listener error for event', event, err); }
+    });
   }
-  function saveSettings(partial) {
-    const current = getSettings();
-    const updated = { ...current, ...partial };
-    _write(KEYS.settings, updated);
+
+  /* ---- Temporary Drafts (Permitted in LocalStorage) ---- */
+  function getInvoiceDraft() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEYS.invoice)) || null; } catch { return null; }
+  }
+  function saveInvoiceDraft(data) {
+    try { localStorage.setItem(DRAFT_KEYS.invoice, JSON.stringify(data)); } catch (_) {}
+  }
+  function clearInvoiceDraft() {
+    try { localStorage.removeItem(DRAFT_KEYS.invoice); } catch (_) {}
+  }
+
+  function getReceiptDraft() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEYS.receipt)) || null; } catch { return null; }
+  }
+  function saveReceiptDraft(data) {
+    try { localStorage.setItem(DRAFT_KEYS.receipt, JSON.stringify(data)); } catch (_) {}
+  }
+  function clearReceiptDraft() {
+    try { localStorage.removeItem(DRAFT_KEYS.receipt); } catch (_) {}
+  }
+
+  /* ---- Settings Bridge ---- */
+  async function getSettings() {
+    return SupabaseService.getSettings();
+  }
+  async function saveSettings(partial) {
+    const updated = await SupabaseService.updateSettings(partial);
+    emit('settings:updated', updated);
     return updated;
   }
 
-  /* ---- customers ---- */
-  function getCustomers() { return _read(KEYS.customers) || []; }
-  function getCustomer(id) { return getCustomers().find(c => c.id === id); }
-  function getCustomerByPhone(phone) { return getCustomers().find(c => c.phone === phone); }
-  function saveCustomer(customer) {
-    const list = getCustomers();
-    if (customer.id) {
-      const idx = list.findIndex(c => c.id === customer.id);
-      if (idx >= 0) list[idx] = { ...list[idx], ...customer, updatedAt: new Date().toISOString() };
-      else list.push({ ...customer, createdAt: new Date().toISOString() });
-    } else {
-      customer.id = _id();
-      customer.createdAt = new Date().toISOString();
-      list.push(customer);
-    }
-    _write(KEYS.customers, list);
-    return customer;
+  /* ---- Customers Bridge ---- */
+  async function getCustomers(searchQuery = '') {
+    return SupabaseService.getCustomers(searchQuery);
   }
-  function deleteCustomer(id) {
-    _write(KEYS.customers, getCustomers().filter(c => c.id !== id));
+  async function getCustomer(id) {
+    return SupabaseService.getCustomer(id);
+  }
+  async function saveCustomer(customerData) {
+    const saved = await SupabaseService.saveCustomer(customerData);
+    emit('customers:updated', saved);
+    return saved;
+  }
+  async function deleteCustomer(id) {
+    const result = await SupabaseService.deleteCustomer(id);
+    emit('customers:updated', { deletedId: id });
+    return result;
   }
 
-  /* ---- receipts ---- */
-  function getReceipts() { return _read(KEYS.receipts) || []; }
-  function getReceipt(id) { return getReceipts().find(r => r.id === id); }
-  function getReceiptsByCustomer(customerId) {
-    return getReceipts().filter(r => r.customerId === customerId);
+  /* ---- Invoices Bridge ---- */
+  async function getInvoices(filters = {}) {
+    return SupabaseService.getInvoices(filters);
   }
-  function generateReceiptNumber() {
-    const now = new Date();
-    const ym = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = getSettings().receiptPrefix || 'INF';
-    const receipts = getReceipts().filter(r => r.receiptNumber && r.receiptNumber.includes(ym));
-    const seq = receipts.length + 1;
-    return `${prefix}-${ym}-${String(seq).padStart(4, '0')}`;
+  async function getInvoice(id) {
+    return SupabaseService.getInvoice(id);
   }
-  function saveReceipt(receipt) {
-    const list = getReceipts();
-    if (!receipt.id) {
-      receipt.id = _id();
-      receipt.createdAt = new Date().toISOString();
-      list.push(receipt);
-    } else {
-      const idx = list.findIndex(r => r.id === receipt.id);
-      if (idx >= 0) { list[idx] = { ...list[idx], ...receipt, updatedAt: new Date().toISOString() }; }
-      else { list.push(receipt); }
-    }
-    _write(KEYS.receipts, list);
-
-    // Auto-create / update customer
-    if (receipt.customerName) {
-      let customer = receipt.customerId ? getCustomer(receipt.customerId) : getCustomerByPhone(receipt.customerPhone);
-      if (!customer) {
-        customer = saveCustomer({
-          name: receipt.customerName,
-          phone: receipt.customerPhone || '',
-          address: receipt.customerAddress || '',
-        });
-      } else {
-        saveCustomer({ id: customer.id, name: receipt.customerName, phone: receipt.customerPhone, address: receipt.customerAddress });
-      }
-      receipt.customerId = customer.id;
-    }
-
-    // Log activity
-    addActivity({
-      type: 'receipt',
-      message: `Receipt ${receipt.receiptNumber || ''} created for ${receipt.customerName || 'Unknown'}`,
-      amount: receipt.totalAmount || 0,
-      receiptId: receipt.id,
-    });
-
-    return receipt;
+  async function generateInvoiceNumber() {
+    return SupabaseService.getNextInvoiceNumber();
   }
-  function deleteReceipt(id) {
-    _write(KEYS.receipts, getReceipts().filter(r => r.id !== id));
+  async function saveInvoice(invoiceData, items = []) {
+    const saved = await SupabaseService.saveInvoice(invoiceData, items);
+    emit('invoices:updated', saved);
+    return saved;
+  }
+  async function deleteInvoice(id) {
+    const result = await SupabaseService.deleteInvoice(id);
+    emit('invoices:updated', { deletedId: id });
+    return result;
   }
 
-  /* ---- activities ---- */
-  function getActivities() { return _read(KEYS.activities) || []; }
-  function addActivity(activity) {
-    const list = getActivities();
-    activity.id = _id();
-    activity.timestamp = new Date().toISOString();
-    list.unshift(activity);
-    if (list.length > 200) list.length = 200;
-    _write(KEYS.activities, list);
+  /* ---- Money Receipts Bridge ---- */
+  async function getReceipts(filters = {}) {
+    return SupabaseService.getReceipts(filters);
+  }
+  async function getReceipt(id) {
+    return SupabaseService.getReceipt(id);
+  }
+  async function generateReceiptNumber() {
+    return SupabaseService.getNextReceiptNumber();
+  }
+  async function saveReceipt(receiptData, items = []) {
+    const saved = await SupabaseService.saveReceipt(receiptData, items);
+    emit('receipts:updated', saved);
+    return saved;
+  }
+  async function deleteReceipt(id) {
+    const result = await SupabaseService.deleteReceipt(id);
+    emit('receipts:updated', { deletedId: id });
+    return result;
   }
 
-  /* ---- drafts ---- */
-  function getDraft() { return _read(KEYS.drafts); }
-  function saveDraft(data) { _write(KEYS.drafts, data); }
-  function clearDraft() { localStorage.removeItem(KEYS.drafts); }
-
-  /* ---- backup / restore ---- */
-  function exportAll() {
-    const data = {};
-    Object.values(KEYS).forEach(k => { data[k] = _read(k); });
-    return JSON.stringify(data, null, 2);
+  /* ---- Users Bridge (Super Admin) ---- */
+  async function getUsers() {
+    return SupabaseService.listUsers();
   }
-  function importAll(jsonString) {
-    try {
-      const data = JSON.parse(jsonString);
-      Object.entries(data).forEach(([k, v]) => { if (v !== null) _write(k, v); });
-      return true;
-    } catch { return false; }
+  async function createUser(email, password, fullName, role) {
+    const user = await SupabaseService.createManagedUser(email, password, fullName, role);
+    emit('users:updated', user);
+    return user;
   }
-
-  /* ---- search ---- */
-  function search(query) {
-    const q = query.toLowerCase().trim();
-    if (!q) return [];
-    const results = [];
-    getReceipts().forEach(r => {
-      const searchable = [
-        r.receiptNumber, r.customerName, r.customerPhone,
-        r.deviceModel, r.serviceType, r.deviceName,
-      ].filter(Boolean).join(' ').toLowerCase();
-      if (searchable.includes(q)) results.push({ type: 'receipt', data: r });
-    });
-    getCustomers().forEach(c => {
-      const searchable = [c.name, c.phone, c.address].filter(Boolean).join(' ').toLowerCase();
-      if (searchable.includes(q)) results.push({ type: 'customer', data: c });
-    });
-    return results;
+  async function updateUser(userId, updates) {
+    const updated = await SupabaseService.updateProfile(userId, updates);
+    emit('users:updated', updated);
+    return updated;
+  }
+  async function toggleUserStatus(userId, newStatus) {
+    const updated = await SupabaseService.toggleUserStatus(userId, newStatus);
+    emit('users:updated', updated);
+    return updated;
+  }
+  async function deleteUser(userId) {
+    const result = await SupabaseService.deleteUser(userId);
+    emit('users:updated', { deletedId: userId });
+    return result;
   }
 
-  /* ---- analytics helpers ---- */
-  function getMonthlyRevenue(months = 12) {
+  /* ---- Activities Bridge ---- */
+  async function getActivities(limit = 20) {
+    return SupabaseService.getActivities(limit);
+  }
+
+  /* ---- Search Bridge ---- */
+  async function search(query) {
+    return SupabaseService.searchAll(query);
+  }
+
+  /* ---- Analytics Helpers (Computed from Real DB Data) ---- */
+  async function getMonthlyAnalytics(months = 6) {
+    const invoices = await SupabaseService.getInvoices();
     const result = [];
     const now = new Date();
+
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
       const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-      const receipts = getReceipts().filter(r => {
-        const rd = new Date(r.createdAt);
-        return rd.getFullYear() === d.getFullYear() && rd.getMonth() === d.getMonth();
+
+      const monthInvoices = invoices.filter(inv => {
+        const invDate = new Date(inv.date || inv.created_at);
+        return invDate.getFullYear() === d.getFullYear() && invDate.getMonth() === d.getMonth();
       });
-      const revenue = receipts.reduce((s, r) => s + (r.totalAmount || 0), 0);
-      const paid = receipts.reduce((s, r) => s + (r.amountPaid || 0), 0);
-      const count = receipts.length;
-      result.push({ label, ym, revenue, paid, count, pending: revenue - paid });
+
+      const revenue = monthInvoices.reduce((s, r) => s + (Number(r.grand_total) || 0), 0);
+      const paid = monthInvoices.reduce((s, r) => s + (Number(r.paid_amount) || 0), 0);
+      const count = monthInvoices.length;
+
+      result.push({
+        label,
+        ym,
+        revenue,
+        paid,
+        pending: Math.max(0, revenue - paid),
+        count,
+      });
     }
+
     return result;
   }
-  function getServiceDistribution() {
+
+  async function getPaymentMethodDistribution() {
+    const invoices = await SupabaseService.getInvoices();
     const map = {};
-    getReceipts().forEach(r => {
-      const st = r.serviceType || 'Other';
-      map[st] = (map[st] || 0) + 1;
-    });
-    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }
-  function getPaymentMethodDistribution() {
-    const map = {};
-    getReceipts().forEach(r => {
-      const pm = r.paymentMethod || 'Cash';
-      map[pm] = (map[pm] || 0) + (r.amountPaid || 0);
+    invoices.forEach(r => {
+      const pm = r.payment_method || 'Cash';
+      map[pm] = (map[pm] || 0) + (Number(r.paid_amount) || 0);
     });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }
 
-  /* ---- seed demo data ---- */
-  function seedIfEmpty() {
-    if (getReceipts().length > 0) return;
-
-    const customers = [
-      { name: 'Rahman Enterprises', phone: '+8801712345678', address: 'Banani, Dhaka' },
-      { name: 'Sarah Tech Solutions', phone: '+8801812345678', address: 'Gulshan, Dhaka' },
-      { name: 'Karim Security Ltd', phone: '+8801912345678', address: 'Uttara, Dhaka' },
-      { name: 'Dhaka Medical Center', phone: '+8801612345678', address: 'Mirpur, Dhaka' },
-      { name: 'City Mart Head Office', phone: '+8801512345678', address: 'Motijheel, Dhaka' },
-      { name: 'Green Valley School', phone: '+8801312345678', address: 'Dhanmondi, Dhaka' },
-      { name: 'National Bank Tower', phone: '+8801412345678', address: 'Agrabad, Chittagong' },
-      { name: 'Royal Hotel & Resort', phone: '+8801212345678', address: 'Cox\'s Bazar' },
-    ];
-
-    const serviceTypes = ['CCTV Installation', 'CCTV Repair', 'DVR Setup', 'Network Configuration', 'System Maintenance', 'Access Control', 'IP Camera Setup'];
-    const deviceNames = ['Hikvision DVR', 'Dahua NVR', 'Hikvision Camera', 'CP Plus Camera', 'Samsung Camera', 'Axis IP Camera', 'Hikvision Access Control'];
-    const deviceModels = ['DS-7108NI-K1', 'DS-7608NI-K2', 'DS-2CD2143G2-I', 'IPC-HDW5442T', 'DS-2DE4A425IWG', 'P3245-V', 'DS-K1T606MFW'];
-    const problems = ['No display', 'Night vision not working', 'Recording not saving', 'Network connectivity issue', 'Camera offline', 'Hard disk error', 'Motion detection fault'];
-    const workDone = ['Power IC Replaced', 'Firmware Updated', 'HDD Replaced', 'LAN Cable Rerun', 'Camera Realigned', 'Full System Reset', 'New Cable Installation'];
-    const paymentMethods = ['Cash', 'Bank', 'Mobile Banking'];
-    const receivedBy = ['Admin', 'Manager', 'Technician'];
-
-    const savedCustomers = customers.map(c => saveCustomer(c));
-    const receipts = [];
-
-    // Generate 40 receipts spread over last 6 months
-    for (let i = 0; i < 40; i++) {
-      const monthsAgo = Math.floor(i / 7);
-      const date = new Date();
-      date.setMonth(date.getMonth() - monthsAgo);
-      date.setDate(Math.floor(Math.random() * 28) + 1);
-      date.setHours(Math.floor(Math.random() * 12) + 8);
-
-      const customer = savedCustomers[i % savedCustomers.length];
-      const amount = Math.floor(Math.random() * 15000) + 2000;
-      const isPaid = Math.random() > 0.2;
-      const isPartial = !isPaid && Math.random() > 0.5;
-      const paid = isPaid ? amount : (isPartial ? Math.floor(amount * 0.5) : 0);
-
-      const receipt = {
-        receiptNumber: `INF-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}-${String(i + 1).padStart(4, '0')}`,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        customerAddress: customer.address,
-        customerId: customer.id,
-        serviceType: serviceTypes[i % serviceTypes.length],
-        deviceName: deviceNames[i % deviceNames.length],
-        deviceModel: deviceModels[i % deviceModels.length],
-        deviceSerial: 'SN-' + String(100000 + i),
-        problemDescription: problems[i % problems.length],
-        workPerformed: workDone[i % workDone.length],
-        totalAmount: amount,
-        discount: Math.random() > 0.8 ? Math.floor(amount * 0.1) : 0,
-        amountPaid: paid,
-        paymentMethod: paymentMethods[i % paymentMethods.length],
-        paymentStatus: isPaid ? 'Paid' : (isPartial ? 'Partial' : 'Due'),
-        receivedBy: receivedBy[i % receivedBy.length],
-        notes: '',
-        createdAt: date.toISOString(),
-        id: _id() + i,
-      };
-      receipts.push(receipt);
-    }
-
-    _write(KEYS.receipts, receipts);
-
-    // Add some activities
-    receipts.slice(0, 10).forEach(r => {
-      addActivity({
-        type: 'receipt',
-        message: `Receipt ${r.receiptNumber} created for ${r.customerName}`,
-        amount: r.totalAmount,
-        receiptId: r.id,
-      });
+  async function getServiceDistribution() {
+    const receipts = await SupabaseService.getReceipts();
+    const map = {};
+    receipts.forEach(r => {
+      const st = r.service_type || 'General Service';
+      map[st] = (map[st] || 0) + 1;
     });
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }
 
   return {
-    on, getSettings, saveSettings,
-    getCustomers, getCustomer, getCustomerByPhone, saveCustomer, deleteCustomer,
-    getReceipts, getReceipt, getReceiptsByCustomer, generateReceiptNumber, saveReceipt, deleteReceipt,
-    getActivities, addActivity,
-    getDraft, saveDraft, clearDraft,
-    exportAll, importAll, search,
-    getMonthlyRevenue, getServiceDistribution, getPaymentMethodDistribution,
-    seedIfEmpty,
+    on,
+    emit,
+    // Drafts
+    getInvoiceDraft,
+    saveInvoiceDraft,
+    clearInvoiceDraft,
+    getReceiptDraft,
+    saveReceiptDraft,
+    clearReceiptDraft,
+    // Settings
+    getSettings,
+    saveSettings,
+    // Customers
+    getCustomers,
+    getCustomer,
+    saveCustomer,
+    deleteCustomer,
+    // Invoices
+    getInvoices,
+    getInvoice,
+    generateInvoiceNumber,
+    saveInvoice,
+    deleteInvoice,
+    // Receipts
+    getReceipts,
+    getReceipt,
+    generateReceiptNumber,
+    saveReceipt,
+    deleteReceipt,
+    // Users
+    getUsers,
+    createUser,
+    updateUser,
+    toggleUserStatus,
+    deleteUser,
+    // Activities
+    getActivities,
+    // Search
+    search,
+    // Analytics
+    getMonthlyAnalytics,
+    getPaymentMethodDistribution,
+    getServiceDistribution,
   };
 })();
+
+if (typeof window !== 'undefined') {
+  window.Store = Store;
+}
