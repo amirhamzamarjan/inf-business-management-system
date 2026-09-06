@@ -63,29 +63,8 @@
           <button type="button" class="auth-toggle-link" id="authModeToggle">
             First time setup? Create initial Super Admin account
           </button>
-          <div style="margin-top:10px">
-            <button type="button" class="auth-toggle-link" id="authConfigToggle" style="font-size:0.75rem;color:var(--text-muted)">
-              ⚙️ Configure Supabase Project Keys
-            </button>
-          </div>
         </div>
       </form>
-
-      <!-- Inline Supabase Credentials Setup -->
-      <div id="authConfigSection" style="display:none;margin-top:18px;padding-top:16px;border-top:1px dashed var(--border)">
-        <h4 style="font-size:0.85rem;font-weight:700;margin-bottom:8px">Supabase Credentials</h4>
-        <div class="form-group">
-          <label style="font-size:0.75rem">Project URL</label>
-          <input type="url" id="authSupabaseUrl" class="form-input form-input--sm form-input--mono" placeholder="https://xxxx.supabase.co">
-        </div>
-        <div class="form-group">
-          <label style="font-size:0.75rem">Anon Key</label>
-          <input type="password" id="authSupabaseKey" class="form-input form-input--sm form-input--mono" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6...">
-        </div>
-        <button type="button" class="btn btn--secondary btn--sm btn--full" id="authSaveConfigBtn">
-          Save & Connect Supabase
-        </button>
-      </div>
     </div>
   </div>
 
@@ -863,29 +842,17 @@
           </div>
         </div>
 
-        <!-- Supabase Connection & Configuration Card -->
+        <!-- Supabase Connection Status Card -->
         <div class="card">
           <div class="card__header">
-            <h3 class="card__title">Supabase Database Connection</h3>
+            <h3 class="card__title">Database Connection</h3>
           </div>
           <div class="card__body">
             <div class="supabase-status-box" id="supabaseStatusBox">
               <span class="status-indicator-dot" id="supabaseStatusDot"></span>
-              <span id="supabaseStatusText">Checking connection...</span>
+              <span id="supabaseStatusText">Connected to Supabase Cloud</span>
             </div>
-            <form id="supabaseConfigForm" style="margin-top:14px">
-              <div class="form-group">
-                <label>Supabase Project URL</label>
-                <input type="url" id="sSupabaseUrl" class="form-input form-input--mono" placeholder="https://your-project.supabase.co">
-              </div>
-              <div class="form-group">
-                <label>Supabase Anon Key</label>
-                <input type="password" id="sSupabaseAnonKey" class="form-input form-input--mono" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
-              </div>
-              <button type="submit" class="btn btn--secondary btn--sm">
-                Update Supabase Credentials
-              </button>
-            </form>
+            <p class="form-hint" style="margin-top:10px">Managed securely via Vercel Environment Variables (<code>SUPABASE_URL</code> &amp; <code>SUPABASE_ANON_KEY</code>).</p>
           </div>
         </div>
 

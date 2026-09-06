@@ -9,19 +9,38 @@ const SupabaseService = (() => {
   // Config Storage Key
   const CONFIG_KEY = 'ix_supabase_config';
 
-  // Default configuration (Replace with your actual Supabase project keys or configure via Setup Modal)
+  // Default configuration (Connected directly to your Supabase Project)
   const DEFAULT_CONFIG = {
-    url: 'https://ix-informix-project.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM0NTk2MDB9.sample-anon-key',
+    url: 'https://rclsoeyphxfecarbjqkn.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjbHNvZXlwaHhmZWNhcmJqcWtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MTA2NTgsImV4cCI6MjEwNDI4NjY1OH0.MqSdwzuBOTFHVi9nWoRRP3srz_jK5foqNpjqZJlWl3U',
   };
 
   let client = null;
   let currentProfile = null;
   let isConnected = false;
+  let configPromise = null;
 
   /* ------------------------------------------------------------------
      1. CONFIGURATION & INITIALIZATION
      ------------------------------------------------------------------ */
+  async function loadVercelConfig() {
+    if (configPromise) return configPromise;
+    configPromise = (async () => {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url && data.anonKey) {
+            saveConfig(data.url, data.anonKey);
+            return data;
+          }
+        }
+      } catch (_) {}
+      return getConfig();
+    })();
+    return configPromise;
+  }
+
   function getConfig() {
     try {
       const stored = localStorage.getItem(CONFIG_KEY);
@@ -40,7 +59,11 @@ const SupabaseService = (() => {
   function initClient() {
     const cfg = getConfig();
     if (typeof window.supabase === 'undefined') {
-      console.warn('Supabase JS SDK not loaded yet.');
+      return null;
+    }
+
+    if (!cfg.url || !cfg.anonKey) {
+      loadVercelConfig();
       return null;
     }
 
@@ -60,6 +83,9 @@ const SupabaseService = (() => {
     }
   }
 
+  // Auto-fetch Vercel config on file load
+  loadVercelConfig();
+
   function getClient() {
     if (!client) initClient();
     return client;
@@ -67,7 +93,7 @@ const SupabaseService = (() => {
 
   function isConfigured() {
     const cfg = getConfig();
-    return Boolean(cfg.url && cfg.anonKey && !cfg.url.includes('ix-informix-project.supabase.co'));
+    return Boolean(cfg.url && cfg.anonKey);
   }
 
   /* ------------------------------------------------------------------

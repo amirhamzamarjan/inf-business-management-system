@@ -26,23 +26,12 @@
       const togglePasswordBtn = document.getElementById('togglePasswordBtn');
       const logoutBtn = document.getElementById('logoutBtn');
 
-      const authConfigToggle = document.getElementById('authConfigToggle');
-      const authSaveConfigBtn = document.getElementById('authSaveConfigBtn');
-
       if (authForm) {
         authForm.addEventListener('submit', handleAuthSubmit);
       }
 
       if (authModeToggle) {
         authModeToggle.addEventListener('click', toggleSetupMode);
-      }
-
-      if (authConfigToggle) {
-        authConfigToggle.addEventListener('click', toggleAuthConfigSection);
-      }
-
-      if (authSaveConfigBtn) {
-        authSaveConfigBtn.addEventListener('click', saveInlineConfig);
       }
 
       if (togglePasswordBtn) {
@@ -1803,14 +1792,6 @@
         });
       }
 
-      const cfgForm = document.getElementById('supabaseConfigForm');
-      if (cfgForm) {
-        cfgForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          saveSupabaseConfig();
-        });
-      }
-
       const uploadBtn = document.getElementById('uploadLogoBtn');
       const fileInput = document.getElementById('logoFileInput');
       if (uploadBtn && fileInput) {
@@ -1852,19 +1833,16 @@
         document.getElementById('settingsLogoImg').src = s.logo_url;
       }
 
-      // Supabase connection display
-      const cfg = SupabaseService.getConfig();
-      document.getElementById('sSupabaseUrl').value = cfg.url || '';
-      document.getElementById('sSupabaseAnonKey').value = cfg.anonKey || '';
-
       const dot = document.getElementById('supabaseStatusDot');
       const text = document.getElementById('supabaseStatusText');
-      if (SupabaseService.isConfigured()) {
-        dot.className = 'status-indicator-dot connected';
-        text.textContent = 'Connected to Supabase PostgreSQL';
-      } else {
-        dot.className = 'status-indicator-dot';
-        text.textContent = 'Connected (Default / Development)';
+      if (dot && text) {
+        if (SupabaseService.isConfigured()) {
+          dot.className = 'status-indicator-dot connected';
+          text.textContent = 'Connected to Supabase PostgreSQL';
+        } else {
+          dot.className = 'status-indicator-dot';
+          text.textContent = 'Connected to Cloud Database';
+        }
       }
     }
 
