@@ -681,6 +681,15 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   background: var(--danger);
   color: #fff;
 }
+.btn--success {
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+.btn--success:hover {
+  background: #15803d;
+  color: #fff;
+}
 .btn--sm { padding: 6px 11px; font-size: 0.78rem; }
 .btn--full { width: 100%; }
 .btn--active { background: var(--primary); color: var(--text-inverse); }
@@ -942,6 +951,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .status-badge--inactive { background: var(--danger-bg); color: var(--danger); }
 .status-badge--admin { background: var(--gold-bg); color: var(--gold); }
 .status-badge--user { background: var(--primary-bg); color: var(--primary); }
+.status-badge--draft { background: rgba(107, 114, 128, 0.12); color: #6b7280; }
+.status-badge--sent { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+.status-badge--approved { background: var(--success-bg); color: var(--success); }
+.status-badge--converted { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
+.status-badge--rejected { background: var(--danger-bg); color: var(--danger); }
 
 /* ---- Dashboard Grid & Stats Cards ---- */
 .stats-grid {
@@ -1429,22 +1443,13 @@ kbd {
   max-width: 55%;
 }
 .lx-header__logo {
-  height: 44px;
-  margin-bottom: 8px;
+  height: 54px;
+  max-width: 290px;
+  object-fit: contain;
+  display: block;
 }
-.lx-header__company {
-  font-family: var(--font);
-  font-size: 16pt;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  color: #111827;
-}
-.lx-header__tagline {
-  font-size: 7.5pt;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: #6b7280;
-  margin-top: 1px;
+.lx-header__company, .lx-header__tagline {
+  display: none !important;
 }
 .lx-header__contact {
   text-align: right;
@@ -1502,6 +1507,25 @@ kbd {
 .lx-meta-status--paid { background: #dcfce7; color: #15803d; }
 .lx-meta-status--partial { background: #fef3c7; color: #b45309; }
 .lx-meta-status--due { background: #fee2e2; color: #b91c1c; }
+.lx-meta-status--draft { background: #f3f4f6; color: #4b5563; }
+.lx-meta-status--sent { background: #dbeafe; color: #1d4ed8; }
+.lx-meta-status--approved { background: #dcfce7; color: #15803d; }
+.lx-meta-status--converted { background: #e0e7ff; color: #4338ca; }
+.lx-meta-status--rejected { background: #fee2e2; color: #b91c1c; }
+
+.lx-meta-converted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 8pt;
+  font-weight: 600;
+  margin-top: 6px;
+}
 
 /* Bill To & Payment Method Boxes */
 .lx-info-grid {

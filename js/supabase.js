@@ -326,8 +326,10 @@ const SupabaseService = (() => {
     currency: '৳',
     invoice_prefix: 'INV',
     receipt_prefix: 'INF',
+    quotation_prefix: 'QT',
     invoice_sequence: 1,
     receipt_sequence: 1,
+    quotation_sequence: 1,
     terms: [
       'Payment is due upon receipt of invoice.',
       'Warranty applies only to specified parts and equipment.',
@@ -630,28 +632,41 @@ const SupabaseService = (() => {
       updated_at: new Date().toISOString(),
     };
 
+    if (invoiceData.source_quotation_id) {
+      payload.source_quotation_id = invoiceData.source_quotation_id;
+    }
+
     let savedInvoice = null;
 
-    if (invoiceData.id) {
-      const { data, error } = await sb
-        .from('invoices')
-        .update(payload)
-        .eq('id', invoiceData.id)
-        .select()
-        .single();
-      if (error) throw error;
-      savedInvoice = data;
+    async function executeInvoiceSave(p) {
+      if (invoiceData.id) {
+        return sb
+          .from('invoices')
+          .update(p)
+          .eq('id', invoiceData.id)
+          .select()
+          .single();
+      } else {
+        return sb
+          .from('invoices')
+          .insert([p])
+          .select()
+          .single();
+      }
+    }
 
+    let saveRes = await executeInvoiceSave(payload);
+    // Backward-compatibility: If database has not yet added source_quotation_id column, retry without it
+    if (saveRes.error && (saveRes.error.code === '42703' || saveRes.error.message?.includes('source_quotation_id')) && payload.source_quotation_id) {
+      delete payload.source_quotation_id;
+      saveRes = await executeInvoiceSave(payload);
+    }
+    if (saveRes.error) throw saveRes.error;
+    savedInvoice = saveRes.data;
+
+    if (invoiceData.id) {
       // Delete old items and insert updated items
       await sb.from('invoice_items').delete().eq('invoice_id', invoiceData.id);
-    } else {
-      const { data, error } = await sb
-        .from('invoices')
-        .insert([payload])
-        .select()
-        .single();
-      if (error) throw error;
-      savedInvoice = data;
     }
 
     // Insert line items
@@ -692,6 +707,293 @@ const SupabaseService = (() => {
 
     if (error) throw error;
     return true;
+  }
+
+  /* ------------------------------------------------------------------
+     6.5. QUOTATIONS SERVICES
+     ------------------------------------------------------------------ */
+
+  async function getNextQuotationNumber() {
+    const sb = getClient();
+    if (!sb) {
+      const year = new Date().getFullYear();
+      return `QT-${year}-000001`;
+    }
+
+    try {
+      const { data, error } = await sb.rpc('get_next_quotation_number');
+      if (!error && data) return data;
+    } catch (_) {}
+
+    // Fallback if RPC is unavailable
+    const s = await getSettings();
+    const prefix = s.quotation_prefix || 'QT';
+    const year = new Date().getFullYear();
+    try {
+      const { count } = await sb.from('quotations').select('id', { count: 'exact', head: true });
+      const seq = (count || 0) + 1;
+      return `${prefix}-${year}-${String(seq).padStart(6, '0')}`;
+    } catch (_) {
+      return `${prefix}-${year}-000001`;
+    }
+  }
+
+  async function getQuotations(filters = {}) {
+    const sb = getClient();
+    if (!sb) return [];
+
+    try {
+      let query = sb
+        .from('quotations')
+        .select('*, quotation_items(*)')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (filters.status && filters.status !== 'All') {
+        query = query.eq('status', filters.status);
+      }
+      if (filters.customerId) {
+        query = query.eq('customer_id', filters.customerId);
+      }
+      if (filters.search) {
+        const s = filters.search.trim();
+        query = query.or(`quotation_number.ilike.%${s}%,customer_name.ilike.%${s}%,customer_phone.ilike.%${s}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('does not exist')) {
+          return [];
+        }
+        throw error;
+      }
+      return data || [];
+    } catch (err) {
+      console.warn('Could not fetch quotations from Supabase:', err);
+      return [];
+    }
+  }
+
+  async function getQuotation(id) {
+    const sb = getClient();
+    if (!sb || !id) return null;
+
+    try {
+      const { data, error } = await sb
+        .from('quotations')
+        .select('*, quotation_items(*)')
+        .eq('id', id)
+        .single();
+
+      if (error) return null;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function saveQuotation(quotationData, items = []) {
+    const sb = getClient();
+    if (!sb) throw new Error('Supabase client is not initialized');
+
+    const profile = await getCurrentProfile();
+    const preparedByName = profile ? profile.full_name : 'Staff';
+    const preparedById = profile ? profile.id : null;
+
+    // Auto-create/link customer if customerName provided
+    let customerId = quotationData.customer_id;
+    if (!customerId && quotationData.customer_name) {
+      const existing = await getCustomers(quotationData.customer_name);
+      const match = existing.find(c => c.name.toLowerCase() === quotationData.customer_name.toLowerCase() || (c.phone && c.phone === quotationData.customer_phone));
+      if (match) {
+        customerId = match.id;
+      } else {
+        const newCust = await saveCustomer({
+          name: quotationData.customer_name,
+          phone: quotationData.customer_phone,
+          email: quotationData.customer_email,
+          address: quotationData.customer_address,
+        });
+        customerId = newCust.id;
+      }
+    }
+
+    const payload = {
+      quotation_number: quotationData.quotation_number,
+      date: quotationData.date || new Date().toISOString().split('T')[0],
+      valid_until: quotationData.valid_until || null,
+      customer_id: customerId || null,
+      customer_name: (quotationData.customer_name || '').trim(),
+      customer_phone: (quotationData.customer_phone || '').trim(),
+      customer_address: (quotationData.customer_address || '').trim(),
+      customer_email: (quotationData.customer_email || '').trim(),
+      subtotal: Number(quotationData.subtotal) || 0,
+      discount: Number(quotationData.discount) || 0,
+      tax_percent: Number(quotationData.tax_percent) || 0,
+      tax_amount: Number(quotationData.tax_amount) || 0,
+      other_charges: Number(quotationData.other_charges) || 0,
+      grand_total: Number(quotationData.grand_total) || 0,
+      status: quotationData.status || 'Draft',
+      notes: (quotationData.notes || '').trim(),
+      terms: quotationData.terms || [],
+      prepared_by_name: quotationData.prepared_by_name || preparedByName,
+      prepared_by_id: quotationData.prepared_by_id || preparedById,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (quotationData.converted_invoice_id) {
+      payload.converted_invoice_id = quotationData.converted_invoice_id;
+    }
+    if (quotationData.converted_invoice_number) {
+      payload.converted_invoice_number = quotationData.converted_invoice_number;
+    }
+
+    let savedQuotation = null;
+
+    if (quotationData.id) {
+      const { data, error } = await sb
+        .from('quotations')
+        .update(payload)
+        .eq('id', quotationData.id)
+        .select()
+        .single();
+      if (error) throw error;
+      savedQuotation = data;
+
+      await sb.from('quotation_items').delete().eq('quotation_id', quotationData.id);
+    } else {
+      const { data, error } = await sb
+        .from('quotations')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw error;
+      savedQuotation = data;
+    }
+
+    // Insert line items
+    if (items && items.length > 0) {
+      const itemRows = items.map((it, idx) => ({
+        quotation_id: savedQuotation.id,
+        description: (it.description || it.name || '').trim(),
+        qty: Number(it.qty) || 1,
+        rate: Number(it.rate || it.unitPrice) || 0,
+        total: (Number(it.qty) || 1) * (Number(it.rate || it.unitPrice) || 0),
+        sort_order: idx,
+      }));
+
+      const { error: itemError } = await sb.from('quotation_items').insert(itemRows);
+      if (itemError) console.error('Error inserting quotation items:', itemError);
+    }
+
+    // Log Activity
+    await logActivity({
+      type: 'quotation',
+      message: `Quotation ${savedQuotation.quotation_number} created for ${savedQuotation.customer_name}`,
+      amount: savedQuotation.grand_total,
+      entity_type: 'quotation',
+      entity_id: savedQuotation.id,
+    });
+
+    return getQuotation(savedQuotation.id);
+  }
+
+  async function deleteQuotation(id) {
+    const sb = getClient();
+    if (!sb) throw new Error('Supabase client is not initialized');
+
+    const { error } = await sb
+      .from('quotations')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+
+  async function convertQuotationToInvoice(quotationId) {
+    const sb = getClient();
+    if (!sb) throw new Error('Supabase client is not initialized');
+
+    // 1. Try atomic PostgreSQL RPC first
+    try {
+      const { data, error } = await sb.rpc('convert_quotation_to_invoice', { p_quotation_id: quotationId });
+      if (!error && data && data.success) {
+        return data;
+      }
+    } catch (_) {}
+
+    // 2. Safe client-side fallback
+    const q = await getQuotation(quotationId);
+    if (!q) throw new Error('Quotation not found');
+
+    if (q.converted_invoice_id) {
+      throw new Error(`Quotation has already been converted to invoice ${q.converted_invoice_number || ''}`);
+    }
+
+    const invNumber = await getNextInvoiceNumber();
+
+    const invPayload = {
+      invoice_number: invNumber,
+      date: new Date().toISOString().split('T')[0],
+      due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      customer_id: q.customer_id,
+      customer_name: q.customer_name,
+      customer_phone: q.customer_phone,
+      customer_address: q.customer_address,
+      customer_email: q.customer_email,
+      subtotal: q.subtotal,
+      discount: q.discount,
+      tax_percent: q.tax_percent,
+      tax_amount: q.tax_amount,
+      other_charges: q.other_charges,
+      grand_total: q.grand_total,
+      paid_amount: 0,
+      due_amount: q.grand_total,
+      payment_method: 'Cash',
+      payment_status: 'Due',
+      notes: q.notes,
+      terms: q.terms,
+      source_quotation_id: q.id,
+    };
+
+    const items = (q.quotation_items || []).map(it => ({
+      description: it.description,
+      qty: it.qty,
+      rate: it.rate,
+    }));
+
+    const savedInvoice = await saveInvoice(invPayload, items);
+
+    // Update quotation status and link
+    try {
+      await sb
+        .from('quotations')
+        .update({
+          status: 'Converted to Invoice',
+          converted_invoice_id: savedInvoice.id,
+          converted_invoice_number: savedInvoice.invoice_number,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', q.id);
+    } catch (uErr) {
+      console.warn('Could not update quotation converted status in Supabase:', uErr);
+    }
+
+    await logActivity({
+      type: 'invoice',
+      message: `Quotation ${q.quotation_number} converted to Invoice ${savedInvoice.invoice_number}`,
+      amount: savedInvoice.grand_total,
+      entity_type: 'invoice',
+      entity_id: savedInvoice.id,
+    });
+
+    return {
+      success: true,
+      invoice_id: savedInvoice.id,
+      invoice_number: savedInvoice.invoice_number,
+      quotation_id: q.id,
+    };
   }
 
   /* ------------------------------------------------------------------
@@ -922,16 +1224,17 @@ const SupabaseService = (() => {
     const q = (query || '').trim().toLowerCase();
     if (!q) return [];
 
-    const results = [];
-    const [invoices, receipts, customers] = await Promise.all([
+    const [invoices, receipts, customers, quotations] = await Promise.all([
       getInvoices({ search: q }),
       getReceipts({ search: q }),
       getCustomers(q),
+      getQuotations({ search: q }),
     ]);
 
     invoices.forEach(inv => results.push({ type: 'invoice', data: inv }));
     receipts.forEach(r => results.push({ type: 'receipt', data: r }));
     customers.forEach(c => results.push({ type: 'customer', data: c }));
+    quotations.forEach(qItem => results.push({ type: 'quotation', data: qItem }));
 
     return results;
   }
@@ -970,6 +1273,13 @@ const SupabaseService = (() => {
     getInvoice,
     saveInvoice,
     deleteInvoice,
+    // Quotations
+    getNextQuotationNumber,
+    getQuotations,
+    getQuotation,
+    saveQuotation,
+    deleteQuotation,
+    convertQuotationToInvoice,
     // Receipts
     getNextReceiptNumber,
     getReceipts,

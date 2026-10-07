@@ -12,7 +12,7 @@
 
   @page {
     size: A4 portrait;
-    margin: 10mm 14mm;
+    margin: 12mm 15mm;
   }
 
   body, html {
@@ -23,7 +23,7 @@
     background: #ffffff !important;
     color: #111827 !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif !important;
-    font-size: 9.5pt !important;
+    font-size: 9pt !important;
     line-height: 1.45 !important;
   }
 
@@ -80,30 +80,29 @@
   .lx-header {
     display: flex !important;
     justify-content: space-between !important;
+    align-items: flex-start !important;
     border-bottom: 2pt solid #111827 !important;
     padding-bottom: 12pt !important;
     margin-bottom: 14pt !important;
     page-break-inside: avoid !important;
   }
 
+  .lx-header__brand {
+    max-width: 55% !important;
+  }
+
   .lx-header__logo {
-    max-height: 36pt !important;
-    margin-bottom: 4pt !important;
+    max-height: 42pt !important;
+    max-width: 200pt !important;
+    margin-bottom: 0 !important;
     display: block !important;
+    object-fit: contain !important;
   }
 
-  .lx-header__company {
-    font-size: 15pt !important;
-    font-weight: 800 !important;
-    color: #111827 !important;
-    letter-spacing: -0.3pt !important;
-  }
-
+  /* Requirement 21: Never display company name text or tagline in header */
+  .lx-header__company,
   .lx-header__tagline {
-    font-size: 7pt !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1.5pt !important;
-    color: #4b5563 !important;
+    display: none !important;
   }
 
   .lx-header__contact {

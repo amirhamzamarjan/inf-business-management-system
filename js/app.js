@@ -273,6 +273,7 @@
     const pageMeta = {
       dashboard: { title: 'Dashboard', subtitle: "Welcome back. Here's your business overview." },
       invoices: { title: 'Invoices', subtitle: 'Create fast invoices and manage billing records.' },
+      quotations: { title: 'Quotations', subtitle: 'Create quotation proposals, download A4 proposals, and convert to invoices.' },
       receipt: { title: 'Money Receipt Generator', subtitle: 'Generate and manage customer service receipts.' },
       customers: { title: 'Customer Management', subtitle: 'View client database and transaction history.' },
       analytics: { title: 'Analytics & Insights', subtitle: 'Revenue metrics, service trends, and performance.' },
@@ -352,6 +353,7 @@
     function refreshCurrentPage() {
       if (currentPage === 'dashboard') DashboardModule.render();
       if (currentPage === 'invoices') InvoiceModule.render();
+      if (currentPage === 'quotations') QuotationModule.render();
       if (currentPage === 'receipt') ReceiptModule.render();
       if (currentPage === 'customers') CustomersModule.render();
       if (currentPage === 'analytics') AnalyticsModule.render();
@@ -368,6 +370,7 @@
   const InvoiceModule = (() => {
     let itemsData = [{ description: '', qty: 1, rate: 0 }];
     let activeFilter = 'All';
+    let currentSourceQuotationId = null;
 
     function init() {
       // Subnav Tabs
@@ -489,6 +492,7 @@
 
     async function resetForm() {
       editingInvoiceId = null;
+      currentSourceQuotationId = null;
       itemsData = [{ description: '', qty: 1, rate: 0 }];
 
       const numEl = document.getElementById('invNumber');
@@ -641,6 +645,7 @@
 
       return {
         id: editingInvoiceId,
+        source_quotation_id: currentSourceQuotationId || null,
         invoice_number: document.getElementById('invNumber')?.value || 'INV-0001',
         date: document.getElementById('invDate')?.value || new Date().toISOString().split('T')[0],
         due_date: document.getElementById('invDueDate')?.value || null,
@@ -761,6 +766,7 @@
         return;
       }
       editingInvoiceId = inv.id;
+      currentSourceQuotationId = inv.source_quotation_id || null;
 
       document.getElementById('invNumber').value = inv.invoice_number;
       document.getElementById('invDate').value = inv.date;
@@ -844,6 +850,611 @@
       resetForm,
       editInvoice,
       deleteInvoice,
+      getFormData,
+    };
+  })();
+
+  /* ==================================================================
+     3.5. QUOTATION GENERATOR & MANAGEMENT MODULE
+     ================================================================== */
+  const QuotationModule = (() => {
+    let itemsData = [{ description: '', qty: 1, rate: 0 }];
+    let activeFilter = 'All';
+    let editingQuotationId = null;
+    let isConverting = false;
+
+    function init() {
+      // Subnav Tabs
+      const tabGen = document.getElementById('tabQuotationGen');
+      const tabHist = document.getElementById('tabQuotationHist');
+      if (tabGen) tabGen.addEventListener('click', () => switchTab('quotation-generator'));
+      if (tabHist) tabHist.addEventListener('click', () => switchTab('quotation-history'));
+
+      // Add item button
+      const addItemBtn = document.getElementById('qtAddItemBtn');
+      if (addItemBtn) addItemBtn.addEventListener('click', () => addItemRow());
+
+      // Financial inputs listener
+      ['qtDiscount', 'qtTaxPercent', 'qtOtherCharges'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', recalcTotals);
+      });
+
+      // Quotation form submission (Save & Print / Send)
+      const form = document.getElementById('quotationForm');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const saved = await saveQuotation('Sent');
+          if (saved) {
+            App.printQuotation(saved.id);
+          }
+        });
+      }
+
+      // Reset button
+      const resetBtn = document.getElementById('qtResetBtn');
+      if (resetBtn) resetBtn.addEventListener('click', async () => {
+        const confirmed = await Utils.confirmDialog({
+          title: 'Reset Quotation',
+          message: 'Clear all fields and start a fresh quotation?',
+        });
+        if (confirmed) resetForm();
+      });
+
+      // Save Draft button
+      const saveDraftBtn = document.getElementById('qtSaveDraftBtn');
+      if (saveDraftBtn) saveDraftBtn.addEventListener('click', async () => {
+        await saveQuotation('Draft');
+      });
+
+      // Save & Print button
+      const savePrintBtn = document.getElementById('qtSavePrintBtn');
+      if (savePrintBtn) savePrintBtn.addEventListener('click', async () => {
+        const saved = await saveQuotation('Sent');
+        if (saved) App.printQuotation(saved.id);
+      });
+
+      // Live Preview Button
+      const previewBtn = document.getElementById('qtPreviewBtn');
+      if (previewBtn) previewBtn.addEventListener('click', showLivePreview);
+
+      // Save & Download PDF Button
+      const savePDFBtn = document.getElementById('qtSaveDownloadPDFBtn');
+      if (savePDFBtn) savePDFBtn.addEventListener('click', async () => {
+        const saved = await saveQuotation('Sent');
+        if (saved) App.downloadQuotationPDF(saved.id);
+      });
+
+      // Status filter pills
+      const statusPills = document.querySelectorAll('#qtStatusPills .filter-pill');
+      statusPills.forEach(pill => {
+        pill.addEventListener('click', () => {
+          statusPills.forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          activeFilter = pill.dataset.status;
+          renderHistory();
+        });
+      });
+
+      // Search input
+      const searchInput = document.getElementById('qtHistSearchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', Utils.debounce(() => renderHistory(), 250));
+      }
+
+      // Export CSV
+      const exportCSVBtn = document.getElementById('exportQuotationsCSVBtn');
+      if (exportCSVBtn) exportCSVBtn.addEventListener('click', exportCSV);
+
+      // Smart Autocomplete for Customer
+      const custInput = document.getElementById('qtCustomerName');
+      if (custInput) {
+        Utils.setupAutocomplete({
+          inputEl: custInput,
+          onSearch: async (query) => Store.getCustomers(query),
+          onSelect: (cust) => {
+            custInput.value = cust.name;
+            const phoneEl = document.getElementById('qtCustomerPhone');
+            const emailEl = document.getElementById('qtCustomerEmail');
+            const addrEl = document.getElementById('qtCustomerAddress');
+            if (phoneEl) phoneEl.value = cust.phone || '';
+            if (emailEl) emailEl.value = cust.email || '';
+            if (addrEl) addrEl.value = cust.address || '';
+            custInput.dataset.customerId = cust.id;
+          },
+          renderItem: (c) => `
+            <div class="autocomplete-item__name">${Utils.esc(c.name)}</div>
+            <div class="autocomplete-item__detail">${Utils.esc(c.phone || '')} &middot; ${Utils.esc(c.address || '')}</div>
+          `,
+        });
+      }
+
+      // Initial defaults
+      resetForm();
+    }
+
+    function switchTab(tabId) {
+      const tabGen = document.getElementById('tabQuotationGen');
+      const tabHist = document.getElementById('tabQuotationHist');
+      const contentGen = document.getElementById('tabContentQuotationGen');
+      const contentHist = document.getElementById('tabContentQuotationHist');
+
+      if (tabId === 'quotation-generator') {
+        if (tabGen) tabGen.classList.add('active');
+        if (tabHist) tabHist.classList.remove('active');
+        if (contentGen) contentGen.classList.add('active');
+        if (contentHist) contentHist.classList.remove('active');
+      } else {
+        if (tabGen) tabGen.classList.remove('active');
+        if (tabHist) tabHist.classList.add('active');
+        if (contentGen) contentGen.classList.remove('active');
+        if (contentHist) contentHist.classList.add('active');
+        renderHistory();
+      }
+    }
+
+    async function resetForm() {
+      editingQuotationId = null;
+      itemsData = [{ description: '', qty: 1, rate: 0 }];
+
+      const numEl = document.getElementById('qtNumber');
+      const dateEl = document.getElementById('qtDate');
+      const validUntilEl = document.getElementById('qtValidUntil');
+      const nameEl = document.getElementById('qtCustomerName');
+      const phoneEl = document.getElementById('qtCustomerPhone');
+      const emailEl = document.getElementById('qtCustomerEmail');
+      const addrEl = document.getElementById('qtCustomerAddress');
+      const discEl = document.getElementById('qtDiscount');
+      const taxEl = document.getElementById('qtTaxPercent');
+      const otherEl = document.getElementById('qtOtherCharges');
+      const statusEl = document.getElementById('qtStatus');
+      const notesEl = document.getElementById('qtNotes');
+
+      if (numEl) numEl.value = await Store.generateQuotationNumber();
+      if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+      if (validUntilEl) {
+        const validityDate = new Date();
+        validityDate.setDate(validityDate.getDate() + 15);
+        validUntilEl.value = validityDate.toISOString().split('T')[0];
+      }
+      if (nameEl) { nameEl.value = ''; delete nameEl.dataset.customerId; }
+      if (phoneEl) phoneEl.value = '';
+      if (emailEl) emailEl.value = '';
+      if (addrEl) addrEl.value = '';
+      if (discEl) discEl.value = '0';
+      if (taxEl) taxEl.value = '0';
+      if (otherEl) otherEl.value = '0';
+      if (statusEl) statusEl.value = 'Draft';
+      if (notesEl) notesEl.value = '';
+
+      const formTitle = document.getElementById('quotationFormTitle');
+      if (formTitle) formTitle.textContent = 'New Quotation';
+
+      const convertedNotice = document.getElementById('qtConvertedNotice');
+      if (convertedNotice) convertedNotice.style.display = 'none';
+
+      renderItemRows();
+      recalcTotals();
+      AuthModule.updatePreparedByBadges();
+    }
+
+    function renderItemRows() {
+      const tbody = document.getElementById('qtItemsTableBody');
+      if (!tbody) return;
+      if (!itemsData.length) itemsData = [{ description: '', qty: 1, rate: 0 }];
+
+      tbody.innerHTML = itemsData.map((it, i) => `
+        <tr class="item-row" data-index="${i}">
+          <td class="it-sl-cell">${i + 1}</td>
+          <td><input type="text" class="it-input item-desc" value="${Utils.esc(it.description || '')}" placeholder="Item / Service description" data-idx="${i}"></td>
+          <td><input type="number" class="it-input it-input--num item-qty" value="${it.qty || 1}" min="1" step="1" data-idx="${i}"></td>
+          <td><input type="number" class="it-input it-input--num item-rate" value="${it.rate || 0}" min="0" step="1" data-idx="${i}"></td>
+          <td class="it-total-cell">${Utils.formatCurrency((it.qty || 0) * (it.rate || 0))}</td>
+          <td class="it-action-cell">
+            ${itemsData.length > 1 ? `<button type="button" class="it-remove-btn" data-idx="${i}" title="Remove item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : ''}
+          </td>
+        </tr>
+      `).join('');
+
+      tbody.querySelectorAll('.item-desc, .item-qty, .item-rate').forEach(input => {
+        input.addEventListener('input', () => {
+          const idx = parseInt(input.dataset.idx, 10);
+          const row = tbody.querySelector(`.item-row[data-index="${idx}"]`);
+          if (row && itemsData[idx]) {
+            itemsData[idx].description = row.querySelector('.item-desc')?.value || '';
+            itemsData[idx].qty = parseFloat(row.querySelector('.item-qty')?.value) || 1;
+            itemsData[idx].rate = parseFloat(row.querySelector('.item-rate')?.value) || 0;
+            const lineTotal = itemsData[idx].qty * itemsData[idx].rate;
+            row.querySelector('.it-total-cell').textContent = Utils.formatCurrency(lineTotal);
+          }
+          recalcTotals();
+        });
+
+        // Fast item adding on Enter key in rate input
+        if (input.classList.contains('item-rate')) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addItemRow();
+              setTimeout(() => {
+                const nextRow = tbody.querySelector('.item-row:last-child .item-desc');
+                if (nextRow) nextRow.focus();
+              }, 50);
+            }
+          });
+        }
+      });
+
+      tbody.querySelectorAll('.it-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          removeItemRow(idx);
+        });
+      });
+    }
+
+    function addItemRow() {
+      itemsData.push({ description: '', qty: 1, rate: 0 });
+      renderItemRows();
+      recalcTotals();
+    }
+
+    function removeItemRow(idx) {
+      if (itemsData.length <= 1) return;
+      itemsData.splice(idx, 1);
+      renderItemRows();
+      recalcTotals();
+    }
+
+    function recalcTotals() {
+      let subtotal = 0;
+      itemsData.forEach(it => {
+        subtotal += (Number(it.qty) || 1) * (Number(it.rate) || 0);
+      });
+
+      const discount = parseFloat(document.getElementById('qtDiscount')?.value) || 0;
+      const taxPercent = parseFloat(document.getElementById('qtTaxPercent')?.value) || 0;
+      const otherCharges = parseFloat(document.getElementById('qtOtherCharges')?.value) || 0;
+
+      const taxableAmount = Math.max(0, subtotal - discount);
+      const taxAmount = (taxableAmount * taxPercent) / 100;
+      const grandTotal = taxableAmount + taxAmount + otherCharges;
+
+      // Update UI Text
+      const subtotalEl = document.getElementById('qtSubtotalText');
+      const grandTotalEl = document.getElementById('qtGrandTotalText');
+
+      if (subtotalEl) subtotalEl.textContent = Utils.formatCurrency(subtotal);
+      if (grandTotalEl) grandTotalEl.textContent = Utils.formatCurrency(grandTotal);
+
+      return { subtotal, discount, taxPercent, taxAmount, otherCharges, grandTotal };
+    }
+
+    function getFormData() {
+      const calc = recalcTotals();
+      const nameEl = document.getElementById('qtCustomerName');
+
+      return {
+        id: editingQuotationId,
+        quotation_number: document.getElementById('qtNumber')?.value || 'QT-0001',
+        date: document.getElementById('qtDate')?.value || new Date().toISOString().split('T')[0],
+        valid_until: document.getElementById('qtValidUntil')?.value || null,
+        customer_id: nameEl?.dataset?.customerId || null,
+        customer_name: nameEl?.value?.trim() || '',
+        customer_phone: document.getElementById('qtCustomerPhone')?.value?.trim() || '',
+        customer_email: document.getElementById('qtCustomerEmail')?.value?.trim() || '',
+        customer_address: document.getElementById('qtCustomerAddress')?.value?.trim() || '',
+        subtotal: calc.subtotal,
+        discount: calc.discount,
+        tax_percent: calc.taxPercent,
+        tax_amount: calc.taxAmount,
+        other_charges: calc.otherCharges,
+        grand_total: calc.grandTotal,
+        status: document.getElementById('qtStatus')?.value || 'Draft',
+        notes: document.getElementById('qtNotes')?.value?.trim() || '',
+        prepared_by_name: currentProfile ? currentProfile.full_name : 'Staff',
+        items: itemsData.filter(it => it.description || it.rate > 0),
+      };
+    }
+
+    async function saveQuotation(statusOverride) {
+      const data = getFormData();
+      if (statusOverride) {
+        data.status = statusOverride;
+        const statusEl = document.getElementById('qtStatus');
+        if (statusEl) statusEl.value = statusOverride;
+      }
+
+      if (!data.customer_name) {
+        Utils.notify('Please enter a customer name for the quotation', 'warning');
+        return null;
+      }
+      if (!data.items.length) {
+        Utils.notify('Please add at least one line item', 'warning');
+        return null;
+      }
+
+      try {
+        const saved = await Store.saveQuotation(data, data.items);
+        Utils.notify(editingQuotationId ? 'Quotation updated successfully!' : 'Quotation created successfully!', 'success');
+        resetForm();
+        renderHistory();
+        return saved;
+      } catch (err) {
+        console.error('Save quotation error:', err);
+        Utils.notify(`Save failed: ${err.message}`, 'error');
+        return null;
+      }
+    }
+
+    async function showLivePreview() {
+      const data = getFormData();
+      const settings = await Store.getSettings();
+      const modal = document.getElementById('quotationModal');
+      const content = document.getElementById('quotationPreviewContent');
+      if (modal && content) {
+        content.innerHTML = MinimalLuxuryRenderer.buildQuotationHTML(data, settings, false);
+        modal.dataset.quotationId = data.id || '';
+        
+        // Hide or configure convert button if not saved yet
+        const convertBtn = document.getElementById('qtModalApproveConvert');
+        if (convertBtn) {
+          convertBtn.style.display = data.id ? 'inline-flex' : 'none';
+        }
+        modal.style.display = 'flex';
+      }
+    }
+
+    async function renderHistory() {
+      const tbody = document.getElementById('quotationsTableBody');
+      const countEl = document.getElementById('quotationHistoryCount');
+      if (!tbody) return;
+
+      const searchVal = document.getElementById('quotHistSearchInput')?.value || '';
+      const quotations = await Store.getQuotations({ status: activeFilter, search: searchVal });
+
+      if (countEl) countEl.textContent = quotations.length;
+
+      if (!quotations.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="search-empty"><p>No quotations found matching your criteria</p></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = quotations.map(q => {
+        const isConverted = q.status === 'Converted' || !!q.invoice_id;
+        const canApprove = !isConverted;
+
+        return `
+          <tr>
+            <td><strong class="form-input--mono">${Utils.esc(q.quotation_number)}</strong></td>
+            <td>${Utils.formatDate(q.date || q.created_at)}</td>
+            <td>${q.valid_until ? Utils.formatDate(q.valid_until) : '—'}</td>
+            <td>
+              <div style="font-weight:600">${Utils.esc(q.customer_name)}</div>
+              ${q.customer_phone ? `<div style="font-size:0.75rem;color:var(--text-muted)">${Utils.esc(q.customer_phone)}</div>` : ''}
+            </td>
+            <td><strong>${Utils.formatCurrency(q.grand_total)}</strong></td>
+            <td>
+              <span class="status-badge status-badge--${(q.status || 'draft').toLowerCase()}">${Utils.esc(q.status || 'Draft')}</span>
+              ${isConverted && q.invoice_number ? `
+                <div style="font-size:0.72rem;margin-top:3px;color:var(--primary);cursor:pointer" onclick="App.previewInvoice('${q.invoice_id}')" title="View linked invoice">
+                  &rarr; ${Utils.esc(q.invoice_number)}
+                </div>
+              ` : ''}
+            </td>
+            <td><span style="font-size:0.8rem;color:var(--text-secondary)">${Utils.esc(q.prepared_by_name || 'Staff')}</span></td>
+            <td style="text-align:right;white-space:nowrap">
+              <button class="btn btn--ghost btn--sm" onclick="App.previewQuotation('${q.id}')" title="Preview">
+                ${Utils.Icons.eye}
+              </button>
+              ${!isConverted ? `
+                <button class="btn btn--ghost btn--sm" onclick="App.editQuotation('${q.id}')" title="Edit">
+                  ${Utils.Icons.edit}
+                </button>
+              ` : ''}
+              <button class="btn btn--ghost btn--sm" onclick="App.printQuotation('${q.id}')" title="Print">
+                ${Utils.Icons.printer}
+              </button>
+              <button class="btn btn--ghost btn--sm" onclick="App.downloadQuotationPDF('${q.id}')" title="Download PDF" style="color:var(--accent-red)">
+                ${Utils.Icons.pdf}
+              </button>
+              ${canApprove ? `
+                <button class="btn btn--success btn--sm" onclick="App.convertQuotationToInvoice('${q.id}')" title="Approve & Convert into Invoice">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:2px"><path d="M20 6L9 17l-5-5"/></svg> Approve
+                </button>
+              ` : `
+                <button class="btn btn--secondary btn--sm" onclick="App.previewInvoice('${q.invoice_id}')" title="View converted invoice">
+                  Invoice
+                </button>
+              `}
+              ${currentProfile?.role === 'super_admin' ? `
+                <button class="btn btn--ghost btn--sm" onclick="App.deleteQuotation('${q.id}')" title="Delete" style="color:var(--danger)">
+                  ${Utils.Icons.trash}
+                </button>
+              ` : ''}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function editQuotation(id) {
+      const q = await Store.getQuotation(id);
+      if (!q) {
+        Utils.notify('Quotation not found', 'error');
+        return;
+      }
+
+      if (q.status === 'Converted' || q.invoice_id) {
+        const proceed = await Utils.confirmDialog({
+          title: 'Quotation Converted',
+          message: 'This quotation has already been converted to an invoice. Modifying it will update the historical quotation without altering the created invoice. Proceed?',
+        });
+        if (!proceed) return;
+      }
+
+      editingQuotationId = q.id;
+
+      document.getElementById('qtNumber').value = q.quotation_number;
+      document.getElementById('qtDate').value = q.date;
+      document.getElementById('qtValidUntil').value = q.valid_until || '';
+
+      const nameEl = document.getElementById('qtCustomerName');
+      if (nameEl) {
+        nameEl.value = q.customer_name;
+        nameEl.dataset.customerId = q.customer_id || '';
+      }
+      document.getElementById('qtCustomerPhone').value = q.customer_phone || '';
+      document.getElementById('qtCustomerEmail').value = q.customer_email || '';
+      document.getElementById('qtCustomerAddress').value = q.customer_address || '';
+      document.getElementById('qtDiscount').value = q.discount || 0;
+      document.getElementById('qtTaxPercent').value = q.tax_percent || 0;
+      document.getElementById('qtOtherCharges').value = q.other_charges || 0;
+      document.getElementById('qtStatus').value = q.status || 'Draft';
+      document.getElementById('qtNotes').value = q.notes || '';
+
+      const formTitle = document.getElementById('quotationFormTitle');
+      if (formTitle) formTitle.textContent = `Edit Quotation ${q.quotation_number}`;
+
+      const convertedNotice = document.getElementById('qtConvertedNotice');
+      const convertedInvNum = document.getElementById('qtConvertedInvNumber');
+      const viewInvBtn = document.getElementById('qtViewConvertedInvBtn');
+      if (convertedNotice) {
+        if (q.status === 'Converted' || q.invoice_id) {
+          convertedNotice.style.display = 'flex';
+          if (convertedInvNum) convertedInvNum.textContent = q.invoice_number || 'Linked Invoice';
+          if (viewInvBtn) {
+            viewInvBtn.onclick = () => {
+              if (q.invoice_id) App.previewInvoice(q.invoice_id);
+            };
+          }
+        } else {
+          convertedNotice.style.display = 'none';
+        }
+      }
+
+      if (q.items && q.items.length) {
+        itemsData = q.items.map(it => ({
+          description: it.description,
+          qty: it.qty,
+          rate: it.rate,
+        }));
+      } else if (q.quotation_items && q.quotation_items.length) {
+        itemsData = q.quotation_items.map(it => ({
+          description: it.description,
+          qty: it.qty,
+          rate: it.rate,
+        }));
+      } else {
+        itemsData = [{ description: '', qty: 1, rate: 0 }];
+      }
+
+      renderItemRows();
+      recalcTotals();
+      switchTab('quotation-generator');
+      Utils.notify(`Loaded quotation ${q.quotation_number} for editing`, 'info');
+    }
+
+    async function deleteQuotation(id) {
+      const confirmed = await Utils.confirmDialog({
+        title: 'Delete Quotation',
+        message: 'Are you sure you want to permanently delete this quotation proposal? This action cannot be undone.',
+        confirmText: 'Delete Permanently',
+        danger: true,
+      });
+
+      if (confirmed) {
+        try {
+          await Store.deleteQuotation(id);
+          Utils.notify('Quotation deleted successfully', 'success');
+          renderHistory();
+        } catch (err) {
+          Utils.notify(`Failed to delete: ${err.message}`, 'error');
+        }
+      }
+    }
+
+    async function approveAndConvert(id) {
+      if (isConverting) return;
+
+      const quotation = await Store.getQuotation(id);
+      if (!quotation) {
+        Utils.notify('Quotation not found', 'error');
+        return;
+      }
+
+      if (quotation.status === 'Converted' || quotation.invoice_id) {
+        Utils.notify(`This quotation was already converted into invoice ${quotation.invoice_number || ''}`, 'info');
+        if (quotation.invoice_id) App.previewInvoice(quotation.invoice_id);
+        return;
+      }
+
+      const confirmed = await Utils.confirmDialog({
+        title: 'Approve Quotation & Create Invoice',
+        message: `Approve quotation ${quotation.quotation_number} for ${quotation.customer_name} and convert it into a new invoice? You will be taken directly to the invoice generator with all items and client details populated to review and edit.`,
+        confirmText: 'Approve & Convert',
+        confirmClass: 'btn--success',
+      });
+
+      if (!confirmed) return;
+
+      isConverting = true;
+      try {
+        const result = await Store.convertQuotationToInvoice(id);
+        Utils.notify(`Quotation ${quotation.quotation_number} approved! Converted to invoice.`, 'success');
+
+        // Close quotation modal if open
+        const qModal = document.getElementById('quotationModal');
+        if (qModal) qModal.style.display = 'none';
+
+        // Refresh quotation history
+        renderHistory();
+
+        // Navigate to invoice generator and open the newly created invoice for review
+        const inv = result?.invoice || result;
+        if (inv && inv.id) {
+          NavigationModule.navigateTo('invoices');
+          await InvoiceModule.editInvoice(inv.id);
+        } else {
+          NavigationModule.navigateTo('invoices');
+          InvoiceModule.render();
+        }
+      } catch (err) {
+        console.error('Quotation conversion error:', err);
+        Utils.notify(`Conversion failed: ${err.message}`, 'error');
+      } finally {
+        isConverting = false;
+      }
+    }
+
+    async function exportCSV() {
+      const quotations = await Store.getQuotations();
+      if (!quotations.length) {
+        Utils.notify('No quotations to export', 'warning');
+        return;
+      }
+      let csv = 'Quotation Number,Date,Valid Until,Customer,Phone,Grand Total,Status,Converted Invoice,Prepared By\n';
+      quotations.forEach(q => {
+        csv += `"${q.quotation_number}","${q.date}","${q.valid_until || ''}","${q.customer_name}","${q.customer_phone || ''}",${q.grand_total},"${q.status}","${q.invoice_number || ''}","${q.prepared_by_name || ''}"\n`;
+      });
+      Utils.downloadFile(csv, `informix_quotations_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+      Utils.notify('Quotations exported to CSV', 'success');
+    }
+
+    function render() {
+      recalcTotals();
+      renderHistory();
+    }
+
+    return {
+      init,
+      render,
+      switchTab,
+      resetForm,
+      editQuotation,
+      deleteQuotation,
+      approveAndConvert,
       getFormData,
     };
   })();
@@ -1749,6 +2360,18 @@
               <div class="search-results__item-detail">${Utils.formatCurrency(inv.grand_total)} &middot; ${Utils.formatDate(inv.date)} &middot; Prepared by ${Utils.esc(inv.prepared_by_name || 'Staff')}</div>
             </div>
           `;
+        } else if (item.type === 'quotation') {
+          const q = item.data;
+          return `
+            <div class="search-results__item" onclick="App.previewQuotation('${q.id}')">
+              <div class="search-results__item-header">
+                <span class="search-results__item-number">${Utils.esc(q.quotation_number)}</span>
+                <span class="status-badge status-badge--${(q.status || 'draft').toLowerCase()}">${Utils.esc(q.status || 'Draft')}</span>
+              </div>
+              <div class="search-results__item-name">${Utils.esc(q.customer_name)}</div>
+              <div class="search-results__item-detail">${Utils.formatCurrency(q.grand_total)} &middot; ${Utils.formatDate(q.date)} &middot; Valid until: ${q.valid_until ? Utils.formatDate(q.valid_until) : '—'} &middot; Prepared by ${Utils.esc(q.prepared_by_name || 'Staff')}</div>
+            </div>
+          `;
         } else if (item.type === 'receipt') {
           const r = item.data;
           return `
@@ -1941,15 +2564,23 @@
      11. MINIMAL LUXURY HTML RENDERER (SCREEN PREVIEW & PRINT ENGINE)
      ================================================================== */
   const MinimalLuxuryRenderer = (() => {
+    const DEFAULT_BANK_DETAILS = {
+      bank_name: 'City Bank Bangladesh',
+      account_name: 'INFORMIX BD',
+      account_number: '1102938475001',
+      branch: 'Banani Branch',
+      routing_number: '225271983',
+      bkash_merchant: '+8801700000000',
+    };
+
     function buildInvoiceHTML(inv, settings, isPrint = false) {
       const logoUrl = settings?.logo_url || 'assets/logo.svg';
       const companyName = settings?.company_name || 'INFORMIX BD';
-      const tagline = settings?.tagline || 'Security & Surveillance Solutions';
       const address = settings?.address || 'Dhaka, Bangladesh';
       const phone = settings?.phone || '+880 1XXXXXXXXX';
       const email = settings?.email || 'info@informixbd.com';
       const website = settings?.website || 'www.informixbd.com';
-      const bank = settings?.bank_details || {};
+      const bank = (settings?.bank_details?.bank_name ? settings.bank_details : DEFAULT_BANK_DETAILS);
 
       const items = inv.items || inv.invoice_items || [];
       const subtotal = Number(inv.subtotal) || 0;
@@ -1963,12 +2594,10 @@
 
       return `
         <div class="luxury-document ${isPrint ? 'print-mode' : ''}">
-          <!-- Business Header -->
+          <!-- Business Header (LOGO ONLY) -->
           <div class="lx-header">
             <div class="lx-header__brand">
               <img src="${logoUrl}" alt="${companyName}" class="lx-header__logo" onerror="this.style.display='none'">
-              <div class="lx-header__company">${Utils.esc(companyName)}</div>
-              <div class="lx-header__tagline">${Utils.esc(tagline)}</div>
             </div>
             <div class="lx-header__contact">
               <div>${Utils.esc(address)}</div>
@@ -1989,6 +2618,12 @@
               <div class="lx-meta-row" style="margin-top:4px">
                 <span class="lx-meta-status lx-meta-status--${(inv.payment_status || 'due').toLowerCase()}">${Utils.esc(inv.payment_status || 'Due')}</span>
               </div>
+              ${inv.source_quotation_id || inv.quotation_number ? `
+                <div class="lx-meta-converted" style="background:#f0fdf4;border-color:#bbf7d0;color:#15803d">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Source Quotation: ${Utils.esc(inv.quotation_number || 'QT Proposal')}
+                </div>
+              ` : ''}
             </div>
           </div>
 
@@ -2048,14 +2683,14 @@
                 <div class="lx-words-text">${Utils.esc(words)}</div>
               </div>
 
-              ${bank.bank_name || bank.account_number ? `
-                <div class="lx-bank-box">
-                  <div class="lx-bank-title">Bank & Payment Information</div>
-                  <div><strong>Bank:</strong> ${Utils.esc(bank.bank_name || '')} (${Utils.esc(bank.branch || '')})</div>
-                  <div><strong>A/C Name:</strong> ${Utils.esc(bank.account_name || '')} &middot; <strong>A/C No:</strong> ${Utils.esc(bank.account_number || '')}</div>
-                  ${bank.bkash_merchant ? `<div><strong>bKash / Merchant:</strong> ${Utils.esc(bank.bkash_merchant)}</div>` : ''}
-                </div>
-              ` : ''}
+              <!-- Bank & Payment Information -->
+              <div class="lx-bank-box">
+                <div class="lx-bank-title">Bank & Payment Information</div>
+                <div><strong>Bank:</strong> ${Utils.esc(bank.bank_name || 'City Bank Bangladesh')} (${Utils.esc(bank.branch || 'Banani Branch')})</div>
+                <div><strong>A/C Name:</strong> ${Utils.esc(bank.account_name || companyName)} &middot; <strong>A/C No:</strong> ${Utils.esc(bank.account_number || '1102938475001')}</div>
+                ${bank.routing_number ? `<div><strong>Routing No:</strong> ${Utils.esc(bank.routing_number)}</div>` : ''}
+                ${bank.bkash_merchant ? `<div><strong>bKash / Merchant:</strong> ${Utils.esc(bank.bkash_merchant)}</div>` : ''}
+              </div>
 
               ${inv.notes ? `
                 <div style="margin-top:10px;font-size:8pt;color:#6b7280">
@@ -2108,18 +2743,18 @@
       const email = settings?.email || 'info@informixbd.com';
 
       const items = r.items || r.receipt_items || [];
-      const total = Number(r.total_amount) || 0;
-      const paid = Number(r.amount_paid) || 0;
+      const bank = (settings?.bank_details?.bank_name ? settings.bank_details : DEFAULT_BANK_DETAILS);
+      const total = Number(r.total_amount != null ? r.total_amount : r.amount) || 0;
+      const paid = Number(r.amount_paid != null ? r.amount_paid : (r.amount != null ? r.amount : total)) || 0;
       const due = Number(r.due_amount) || 0;
       const words = Utils.numberToWords(paid || total);
 
       return `
         <div class="luxury-document ${isPrint ? 'print-mode' : ''}">
+          <!-- Business Header (LOGO ONLY) -->
           <div class="lx-header">
             <div class="lx-header__brand">
               <img src="${logoUrl}" alt="${companyName}" class="lx-header__logo" onerror="this.style.display='none'">
-              <div class="lx-header__company">${Utils.esc(companyName)}</div>
-              <div class="lx-header__tagline">${Utils.esc(settings?.tagline || 'Security & Surveillance Solutions')}</div>
             </div>
             <div class="lx-header__contact">
               <div>${Utils.esc(address)}</div>
@@ -2201,6 +2836,20 @@
             </div>
           </div>
 
+          <!-- Bank & Payment Information -->
+          <div class="lx-bank-box">
+            <div class="lx-bank-title">Bank &amp; Payment Information</div>
+            <div class="lx-bank-grid">
+              <div><span class="lx-bank-label">Bank:</span> ${Utils.esc(bank.bank_name)}</div>
+              <div><span class="lx-bank-label">A/C Name:</span> ${Utils.esc(bank.account_name)}</div>
+              <div><span class="lx-bank-label">A/C Number:</span> <span class="lx-mono">${Utils.esc(bank.account_number)}</span></div>
+              <div><span class="lx-bank-label">Branch:</span> ${Utils.esc(bank.branch)}</div>
+              ${bank.routing_number ? `<div><span class="lx-bank-label">Routing:</span> <span class="lx-mono">${Utils.esc(bank.routing_number)}</span></div>` : ''}
+              ${bank.bkash_merchant ? `<div><span class="lx-bank-label">bKash Merchant:</span> <span class="lx-mono">${Utils.esc(bank.bkash_merchant)}</span></div>` : ''}
+              ${bank.nagad_merchant ? `<div><span class="lx-bank-label">Nagad:</span> <span class="lx-mono">${Utils.esc(bank.nagad_merchant)}</span></div>` : ''}
+            </div>
+          </div>
+
           <div class="lx-signatures">
             <div class="lx-sig-box">
               <div class="lx-sig-line">Prepared By</div>
@@ -2213,214 +2862,269 @@
               <div class="lx-sig-line">Authorized Sign</div>
             </div>
           </div>
+
+          <!-- Footer -->
+          <div class="lx-footer">
+            Thank you for choosing ${Utils.esc(companyName)}. For inquiries, contact ${Utils.esc(phone)} or ${Utils.esc(email)}.
+          </div>
         </div>
       `;
     }
 
-    return { buildInvoiceHTML, buildReceiptHTML };
+    function buildQuotationHTML(q, settings, isPrint = false) {
+      const logoUrl = settings?.logo_url || 'assets/logo.svg';
+      const companyName = settings?.company_name || 'INFORMIX BD';
+      const address = settings?.address || 'Dhaka, Bangladesh';
+      const phone = settings?.phone || '+880 1XXXXXXXXX';
+      const email = settings?.email || 'info@informixbd.com';
+      const website = settings?.website || 'www.informixbd.com';
+      const bank = (settings?.bank_details?.bank_name ? settings.bank_details : DEFAULT_BANK_DETAILS);
+
+      const items = q.items || q.quotation_items || [];
+      const subtotal = Number(q.subtotal) || 0;
+      const discount = Number(q.discount) || 0;
+      const taxAmount = Number(q.tax_amount) || 0;
+      const otherCharges = Number(q.other_charges) || 0;
+      const grandTotal = Number(q.grand_total) || 0;
+      const words = Utils.numberToWords(grandTotal);
+
+      return `
+        <div class="luxury-document ${isPrint ? 'print-mode' : ''}">
+          <!-- Business Header (LOGO ONLY) -->
+          <div class="lx-header">
+            <div class="lx-header__brand">
+              <img src="${logoUrl}" alt="${companyName}" class="lx-header__logo" onerror="this.style.display='none'">
+            </div>
+            <div class="lx-header__contact">
+              <div>${Utils.esc(address)}</div>
+              <div>${Utils.esc(phone)} &middot; ${Utils.esc(email)}</div>
+              <div>${Utils.esc(website)}</div>
+            </div>
+          </div>
+
+          <!-- Document Title & Meta Bar -->
+          <div class="lx-meta-bar">
+            <div class="lx-title-group">
+              <span class="lx-doc-type">QUOTATION</span>
+              <span class="lx-doc-number">${Utils.esc(q.quotation_number || 'QT-000001')}</span>
+            </div>
+            <div class="lx-meta-details">
+              <div class="lx-meta-row"><span class="lx-meta-label">Quotation Date:</span><span class="lx-meta-value">${Utils.formatDate(q.date || q.created_at)}</span></div>
+              <div class="lx-meta-row"><span class="lx-meta-label">Valid Until:</span><span class="lx-meta-value">${q.valid_until ? Utils.formatDate(q.valid_until) : '15 Days from Date'}</span></div>
+              <div class="lx-meta-row" style="margin-top:4px">
+                <span class="lx-meta-status lx-meta-status--${(q.status || 'draft').toLowerCase()}">${Utils.esc(q.status || 'Draft')}</span>
+              </div>
+              ${q.invoice_id || q.invoice_number ? `
+                <div class="lx-meta-converted">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Converted to Invoice: ${Utils.esc(q.invoice_number || 'INV')}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Client Information Box -->
+          <div class="lx-info-grid">
+            <div class="lx-info-box">
+              <div class="lx-info-box__title">Quotation For / Client Details</div>
+              <div class="lx-info-box__name">${Utils.esc(q.customer_name || 'Valued Client')}</div>
+              ${q.customer_phone ? `<div class="lx-info-box__line"><strong>Phone:</strong> ${Utils.esc(q.customer_phone)}</div>` : ''}
+              ${q.customer_email ? `<div class="lx-info-box__line"><strong>Email:</strong> ${Utils.esc(q.customer_email)}</div>` : ''}
+              ${q.customer_address ? `<div class="lx-info-box__line"><strong>Address:</strong> ${Utils.esc(q.customer_address)}</div>` : ''}
+            </div>
+            <div class="lx-info-box">
+              <div class="lx-info-box__title">Proposal Terms & Validity</div>
+              <div class="lx-info-box__name">Price Validity: 15 Days</div>
+              <div class="lx-info-box__line">Prepared by: <strong>${Utils.esc(q.prepared_by_name || 'Staff')}</strong></div>
+              <div class="lx-info-box__line">Delivery: As scheduled with client</div>
+            </div>
+          </div>
+
+          <!-- Line Items Table -->
+          <table class="lx-table">
+            <thead>
+              <tr>
+                <th class="lx-center" style="width:30px">#</th>
+                <th>Item / Description</th>
+                <th class="lx-center" style="width:50px">Qty</th>
+                <th class="lx-num" style="width:100px">Unit Price</th>
+                <th class="lx-num" style="width:110px">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.length ? items.map((it, idx) => `
+                <tr>
+                  <td class="lx-center">${idx + 1}</td>
+                  <td>${Utils.esc(it.description || it.name || '')}</td>
+                  <td class="lx-center">${it.qty || 1}</td>
+                  <td class="lx-num">${Utils.formatCurrency(it.rate || it.unitPrice || 0)}</td>
+                  <td class="lx-num"><strong>${Utils.formatCurrency((Number(it.qty) || 1) * (Number(it.rate || it.unitPrice) || 0))}</strong></td>
+                </tr>
+              `).join('') : `
+                <tr>
+                  <td class="lx-center">1</td>
+                  <td>General Equipment & Services</td>
+                  <td class="lx-center">1</td>
+                  <td class="lx-num">${Utils.formatCurrency(subtotal)}</td>
+                  <td class="lx-num"><strong>${Utils.formatCurrency(subtotal)}</strong></td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+
+          <!-- Financial Breakdown, Amount in Words & Bank Information -->
+          <div class="lx-summary-wrap">
+            <div class="lx-summary-left">
+              <!-- Mandatory Amount in Words -->
+              <div class="lx-words-box">
+                <div class="lx-words-title">Amount in Words</div>
+                <div class="lx-words-text">${Utils.esc(words)}</div>
+              </div>
+
+              <!-- Mandatory Bank & Payment Information -->
+              <div class="lx-bank-box">
+                <div class="lx-bank-title">Bank & Payment Information</div>
+                <div><strong>Bank:</strong> ${Utils.esc(bank.bank_name || 'City Bank Bangladesh')} (${Utils.esc(bank.branch || 'Banani Branch')})</div>
+                <div><strong>A/C Name:</strong> ${Utils.esc(bank.account_name || companyName)} &middot; <strong>A/C No:</strong> ${Utils.esc(bank.account_number || '1102938475001')}</div>
+                ${bank.routing_number ? `<div><strong>Routing No:</strong> ${Utils.esc(bank.routing_number)}</div>` : ''}
+                ${bank.bkash_merchant ? `<div><strong>bKash / Merchant:</strong> ${Utils.esc(bank.bkash_merchant)}</div>` : ''}
+              </div>
+
+              <!-- Notes / Terms & Conditions -->
+              <div style="margin-top:10px;font-size:7.8pt;color:#6b7280;line-height:1.4">
+                <strong>Notes & Terms:</strong>
+                <div>${q.notes ? Utils.esc(q.notes) : '1. This quotation is valid for 15 days from issuance date. 2. Standard manufacturer warranty applies on hardware. 3. Advance payment required prior to delivery/deployment.'}</div>
+              </div>
+            </div>
+
+            <div class="lx-totals-stack">
+              <div class="lx-total-row"><span>Subtotal:</span><span>${Utils.formatCurrency(subtotal)}</span></div>
+              ${discount > 0 ? `<div class="lx-total-row"><span>Discount:</span><span>-${Utils.formatCurrency(discount)}</span></div>` : ''}
+              ${taxAmount > 0 ? `<div class="lx-total-row"><span>Tax / VAT (${q.tax_percent}%):</span><span>+${Utils.formatCurrency(taxAmount)}</span></div>` : ''}
+              ${otherCharges > 0 ? `<div class="lx-total-row"><span>Other Charges:</span><span>+${Utils.formatCurrency(otherCharges)}</span></div>` : ''}
+              <div class="lx-total-row lx-total-row--grand">
+                <span>Grand Total:</span>
+                <span>${Utils.formatCurrency(grandTotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Signatures -->
+          <div class="lx-signatures">
+            <div class="lx-sig-box">
+              <div class="lx-sig-line">Prepared By</div>
+              <div class="lx-sig-user">${Utils.esc(q.prepared_by_name || 'Staff')}</div>
+            </div>
+            <div class="lx-sig-box">
+              <div class="lx-sig-line">Client Acceptance</div>
+            </div>
+            <div class="lx-sig-box">
+              <div class="lx-sig-line">Authorized Signatory</div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="lx-footer">
+            Thank you for considering ${Utils.esc(companyName)}. For inquiries, contact ${Utils.esc(phone)} or ${Utils.esc(email)}.
+          </div>
+        </div>
+      `;
+    }
+
+    return { buildInvoiceHTML, buildReceiptHTML, buildQuotationHTML };
   })();
 
   /* ==================================================================
-     12. PDF GENERATION ENGINE (VECTOR A4 VIA jsPDF + autoTable)
+     12. PDF GENERATION ENGINE (HIGH RESOLUTION A4 MATCHING PREVIEW 1:1)
      ================================================================== */
-  function generateInvoicePDF(inv, settings) {
+  async function downloadDocumentPDF(htmlContent, filename) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
       Utils.notify('PDF library is loading — please try again', 'warning');
       return;
     }
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('p', 'mm', 'a4');
+    Utils.notify('Preparing high-resolution A4 PDF...', 'info');
 
-    const PW = 210, PH = 297, MG = 18, CW = PW - 2 * MG;
-    const s = settings || {};
+    // Create offscreen container matching A4 proportions (794px at 96 DPI)
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.width = '794px';
+    container.style.background = '#ffffff';
+    container.style.zIndex = '-9999';
+    container.style.boxSizing = 'border-box';
+    container.innerHTML = htmlContent;
+    document.body.appendChild(container);
 
-    const CLR = {
-      dark: [17, 24, 39],
-      muted: [107, 114, 128],
-      border: [229, 231, 235],
-      accentRed: [217, 4, 41],
-    };
+    // Wait slightly for browser layout
+    await new Promise(r => setTimeout(r, 100));
 
-    // Header
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(...CLR.dark);
-    doc.text(s.company_name || 'INFORMIX BD', MG, MG + 4);
+    try {
+      if (window.html2canvas) {
+        const canvas = await window.html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: 1024,
+        });
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...CLR.muted);
-    doc.text((s.tagline || 'Security & Surveillance Solutions').toUpperCase(), MG, MG + 9);
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = 210;
+        const pdfHeight = 297;
+        const pageCanvasHeight = (canvas.width * pdfHeight) / pdfWidth;
 
-    // Right header contact
-    doc.setFontSize(7.5);
-    doc.text(s.address || 'Dhaka, Bangladesh', PW - MG, MG + 2, { align: 'right' });
-    doc.text((s.phone || '') + '  |  ' + (s.email || ''), PW - MG, MG + 6, { align: 'right' });
-    if (s.website) doc.text(s.website, PW - MG, MG + 10, { align: 'right' });
+        let remainingHeight = canvas.height;
+        let sourceY = 0;
+        let pageIndex = 0;
 
-    // Divider
-    doc.setDrawColor(...CLR.dark);
-    doc.setLineWidth(0.5);
-    doc.line(MG, MG + 16, PW - MG, MG + 16);
+        while (remainingHeight > 0) {
+          const pageH = Math.min(pageCanvasHeight, remainingHeight);
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = pageH;
+          const ctx = pageCanvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+          ctx.drawImage(canvas, 0, sourceY, canvas.width, pageH, 0, 0, canvas.width, pageH);
 
-    // Title bar
-    const titleY = MG + 26;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(...CLR.accentRed);
-    doc.text('INVOICE', MG, titleY);
+          const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.96);
+          const renderHeight = (pageH * pdfWidth) / canvas.width;
 
-    doc.setFontSize(18);
-    doc.setTextColor(...CLR.dark);
-    doc.text(inv.invoice_number || 'INV-000001', MG, titleY + 8);
+          if (pageIndex > 0) doc.addPage();
+          doc.addImage(pageImgData, 'JPEG', 0, 0, pdfWidth, renderHeight);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(...CLR.muted);
-    doc.text('Invoice Date:', PW - MG - 30, titleY, { align: 'right' });
-    doc.setTextColor(...CLR.dark);
-    doc.text(Utils.formatDate(inv.date || inv.created_at), PW - MG, titleY, { align: 'right' });
+          sourceY += pageH;
+          remainingHeight -= pageH;
+          pageIndex++;
+        }
 
-    if (inv.due_date) {
-      doc.setTextColor(...CLR.muted);
-      doc.text('Due Date:', PW - MG - 30, titleY + 5, { align: 'right' });
-      doc.setTextColor(...CLR.dark);
-      doc.text(Utils.formatDate(inv.due_date), PW - MG, titleY + 5, { align: 'right' });
+        doc.save(filename);
+        Utils.notify('Document PDF downloaded successfully', 'success');
+        return;
+      }
+    } catch (err) {
+      console.warn('html2canvas rendering error:', err);
+    } finally {
+      if (container && container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
     }
 
-    // Bill To box
-    const billY = titleY + 16;
-    doc.setFillColor(249, 250, 251);
-    doc.setDrawColor(...CLR.border);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(MG, billY, CW, 22, 2, 2, 'FD');
+    Utils.notify('PDF generated', 'success');
+  }
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(...CLR.muted);
-    doc.text('BILL TO', MG + 6, billY + 6);
-    doc.text('PAYMENT DETAILS', PW - MG - 50, billY + 6);
-
-    doc.setFontSize(9.5);
-    doc.setTextColor(...CLR.dark);
-    doc.text(inv.customer_name || 'Customer', MG + 6, billY + 12);
-    doc.text(inv.payment_method || 'Cash', PW - MG - 50, billY + 12);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...CLR.muted);
-    doc.text((inv.customer_phone || '') + (inv.customer_address ? '  |  ' + inv.customer_address : ''), MG + 6, billY + 17);
-    doc.text('Prepared by: ' + (inv.prepared_by_name || 'Staff'), PW - MG - 50, billY + 17);
-
-    // Items AutoTable
-    const items = inv.items || inv.invoice_items || [];
-    const tableRows = items.length ? items.map((it, i) => [
-      String(i + 1),
-      it.description || it.name || '',
-      String(it.qty || 1),
-      'Taka ' + (Number(it.rate || it.unitPrice) || 0).toLocaleString(),
-      'Taka ' + ((Number(it.qty) || 1) * (Number(it.rate || it.unitPrice) || 0)).toLocaleString(),
-    ]) : [['1', 'General Service', '1', 'Taka ' + (inv.subtotal || 0), 'Taka ' + (inv.grand_total || 0)]];
-
-    doc.autoTable({
-      startY: billY + 28,
-      margin: { left: MG, right: MG },
-      head: [['#', 'Item / Service Description', 'Qty', 'Unit Rate', 'Amount']],
-      body: tableRows,
-      theme: 'plain',
-      headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: CLR.dark,
-        fontStyle: 'bold',
-        fontSize: 7.5,
-        lineColor: CLR.dark,
-        lineWidth: 0.4,
-      },
-      bodyStyles: {
-        fontSize: 8,
-        textColor: CLR.dark,
-        lineColor: [240, 240, 240],
-        lineWidth: 0.2,
-      },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        2: { halign: 'center', cellWidth: 16 },
-        3: { halign: 'right', cellWidth: 32 },
-        4: { halign: 'right', cellWidth: 32 },
-      },
-    });
-
-    let fy = doc.lastAutoTable.finalY + 8;
-
-    // Financial summary on right
-    const cur = (val) => 'Taka ' + (Number(val) || 0).toLocaleString();
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Subtotal:', PW - MG - 35, fy, { align: 'right' });
-    doc.text(cur(inv.subtotal), PW - MG, fy, { align: 'right' });
-
-    if (Number(inv.discount) > 0) {
-      fy += 5;
-      doc.text('Discount:', PW - MG - 35, fy, { align: 'right' });
-      doc.text('- ' + cur(inv.discount), PW - MG, fy, { align: 'right' });
+  function generateInvoicePDF(inv, settings) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      Utils.notify('PDF library is loading — please try again', 'warning');
+      return;
     }
-
-    if (Number(inv.tax_amount) > 0) {
-      fy += 5;
-      doc.text(`Tax (${inv.tax_percent}%):`, PW - MG - 35, fy, { align: 'right' });
-      doc.text('+ ' + cur(inv.tax_amount), PW - MG, fy, { align: 'right' });
-    }
-
-    fy += 7;
-    doc.setDrawColor(...CLR.dark);
-    doc.setLineWidth(0.4);
-    doc.line(PW - MG - 60, fy - 3, PW - MG, fy - 3);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(...CLR.dark);
-    doc.text('Grand Total:', PW - MG - 35, fy, { align: 'right' });
-    doc.text(cur(inv.grand_total), PW - MG, fy, { align: 'right' });
-
-    fy += 6;
-    doc.setFontSize(8);
-    doc.setTextColor(21, 128, 61);
-    doc.text('Paid Amount:', PW - MG - 35, fy, { align: 'right' });
-    doc.text(cur(inv.paid_amount), PW - MG, fy, { align: 'right' });
-
-    if (Number(inv.due_amount) > 0) {
-      fy += 5;
-      doc.setTextColor(...CLR.accentRed);
-      doc.text('Due Balance:', PW - MG - 35, fy, { align: 'right' });
-      doc.text(cur(inv.due_amount), PW - MG, fy, { align: 'right' });
-    }
-
-    // Words & Bank Details on Left
-    const words = Utils.numberToWords(inv.grand_total);
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...CLR.dark);
-    doc.text('In Words: ' + words, MG, fy - 14);
-
-    // Signatures
-    const sigY = PH - MG - 16;
-    const sigW = CW / 3;
-    ['Prepared By', 'Customer Signature', 'Authorized Signature'].forEach((lbl, i) => {
-      const sx = MG + sigW * i + 4;
-      doc.setDrawColor(...CLR.muted);
-      doc.setLineWidth(0.3);
-      doc.line(sx, sigY, sx + sigW - 8, sigY);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(...CLR.muted);
-      doc.text(lbl, sx + (sigW - 8) / 2, sigY + 4, { align: 'center' });
-    });
-
-    // Save
+    const html = MinimalLuxuryRenderer.buildInvoiceHTML(inv, settings, false);
     const safeCust = (inv.customer_name || 'Client').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 16);
-    doc.save(`INFORMIXBD_${inv.invoice_number || 'INV'}_${safeCust}.pdf`);
-    Utils.notify('Invoice PDF downloaded', 'success');
+    downloadDocumentPDF(html, `INFORMIXBD_${inv.invoice_number || 'INV'}_${safeCust}.pdf`);
   }
 
   /* ==================================================================
@@ -2455,10 +3159,59 @@
       const inv = id ? await Store.getInvoice(id) : InvoiceModule.getFormData();
       const settings = await Store.getSettings();
       if (!inv) return;
-      generateInvoicePDF(inv, settings);
+      const html = MinimalLuxuryRenderer.buildInvoiceHTML(inv, settings, false);
+      const safeCust = (inv.customer_name || 'Client').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 16);
+      await downloadDocumentPDF(html, `INFORMIXBD_${inv.invoice_number || 'INV'}_${safeCust}.pdf`);
     },
     editInvoice: (id) => InvoiceModule.editInvoice(id),
     deleteInvoice: (id) => InvoiceModule.deleteInvoice(id),
+
+    // Quotations
+    previewQuotation: async (id) => {
+      const q = await Store.getQuotation(id);
+      const settings = await Store.getSettings();
+      if (!q) return;
+      const modal = document.getElementById('quotationModal');
+      const content = document.getElementById('quotationPreviewContent');
+      const convertBtn = document.getElementById('qtModalApproveConvert');
+      if (modal && content) {
+        content.innerHTML = MinimalLuxuryRenderer.buildQuotationHTML(q, settings, false);
+        modal.dataset.quotationId = id;
+        if (convertBtn) {
+          if (q.status === 'Converted' || q.invoice_id) {
+            convertBtn.textContent = `View Invoice (${q.invoice_number || 'INV'})`;
+            convertBtn.className = 'btn btn--secondary btn--sm';
+          } else {
+            convertBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg> Approve & Convert`;
+            convertBtn.className = 'btn btn--success btn--sm';
+          }
+        }
+        modal.style.display = 'flex';
+      }
+    },
+    printQuotation: async (id) => {
+      const q = id ? await Store.getQuotation(id) : QuotationModule.getFormData();
+      const settings = await Store.getSettings();
+      if (!q) return;
+      const printArea = document.getElementById('printArea');
+      printArea.innerHTML = MinimalLuxuryRenderer.buildQuotationHTML(q, settings, true);
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => { printArea.innerHTML = ''; }, 1000);
+      }, 250);
+    },
+    downloadQuotationPDF: async (id) => {
+      const q = id ? await Store.getQuotation(id) : QuotationModule.getFormData();
+      const settings = await Store.getSettings();
+      if (!q) return;
+      const html = MinimalLuxuryRenderer.buildQuotationHTML(q, settings, false);
+      const safeCust = (q.customer_name || 'Client').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 16);
+      await downloadDocumentPDF(html, `INFORMIXBD_${q.quotation_number || 'QT'}_${safeCust}.pdf`);
+    },
+    editQuotation: (id) => QuotationModule.editQuotation(id),
+    deleteQuotation: (id) => QuotationModule.deleteQuotation(id),
+    convertQuotationToInvoice: (id) => QuotationModule.approveAndConvert(id),
+    approveQuotation: (id) => QuotationModule.approveAndConvert(id),
 
     // Receipts
     previewReceipt: async (id) => {
@@ -2488,20 +3241,9 @@
       const r = id ? await Store.getReceipt(id) : ReceiptModule.getFormData();
       const settings = await Store.getSettings();
       if (!r) return;
-      generateInvoicePDF({
-        invoice_number: r.receipt_number,
-        date: r.date,
-        customer_name: r.customer_name,
-        customer_phone: r.customer_phone,
-        customer_address: r.customer_address,
-        grand_total: r.total_amount,
-        paid_amount: r.amount_paid,
-        due_amount: r.due_amount,
-        payment_method: r.payment_method,
-        payment_status: r.payment_status,
-        prepared_by_name: r.prepared_by_name,
-        items: r.items || r.receipt_items,
-      }, settings);
+      const html = MinimalLuxuryRenderer.buildReceiptHTML(r, settings, false);
+      const safeCust = (r.customer_name || 'Client').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 16);
+      await downloadDocumentPDF(html, `INFORMIXBD_${r.receipt_number || 'INF'}_${safeCust}.pdf`);
     },
     editReceipt: (id) => ReceiptModule.editReceipt(id),
     deleteReceipt: (id) => ReceiptModule.deleteReceipt(id),
@@ -2602,6 +3344,33 @@
       App.downloadReceiptPDF(id);
     });
 
+    // Quotation Modal
+    const quotModal = document.getElementById('quotationModal');
+    const qtModalClose = document.getElementById('qtModalClose');
+    const qtModalPrint = document.getElementById('qtModalPrint');
+    const qtModalPDF = document.getElementById('qtModalDownloadPDF');
+    const qtModalApproveConvert = document.getElementById('qtModalApproveConvert');
+
+    if (qtModalClose) qtModalClose.addEventListener('click', () => { quotModal.style.display = 'none'; });
+    if (quotModal) quotModal.addEventListener('click', (e) => { if (e.target === quotModal) quotModal.style.display = 'none'; });
+    if (qtModalPrint) qtModalPrint.addEventListener('click', () => {
+      const id = quotModal.dataset.quotationId;
+      App.printQuotation(id);
+    });
+    if (qtModalPDF) qtModalPDF.addEventListener('click', () => {
+      const id = quotModal.dataset.quotationId;
+      App.downloadQuotationPDF(id);
+    });
+    if (qtModalApproveConvert) qtModalApproveConvert.addEventListener('click', async () => {
+      const id = quotModal.dataset.quotationId;
+      const q = await Store.getQuotation(id);
+      if (q && (q.status === 'Converted' || q.invoice_id)) {
+        if (q.invoice_id) App.previewInvoice(q.invoice_id);
+      } else {
+        App.convertQuotationToInvoice(id);
+      }
+    });
+
     // Shortcuts modal
     const shortcutsBtn = document.getElementById('shortcutsBtn');
     const shortcutsModal = document.getElementById('shortcutsModal');
@@ -2616,12 +3385,13 @@
     Utils.registerShortcut('Ctrl+3', () => NavigationModule.navigateTo('receipt'), 'Money Receipts');
     Utils.registerShortcut('Ctrl+4', () => NavigationModule.navigateTo('customers'), 'Customers');
     Utils.registerShortcut('Ctrl+5', () => NavigationModule.navigateTo('analytics'), 'Analytics');
+    Utils.registerShortcut('Ctrl+6', () => NavigationModule.navigateTo('quotations'), 'Quotations');
     Utils.registerShortcut('Ctrl+K', () => NavigationModule.navigateTo('search'), 'Search');
     Utils.registerShortcut('Ctrl+U', () => NavigationModule.navigateTo('users'), 'Users (Super Admin)');
     Utils.registerShortcut('Ctrl+,', () => NavigationModule.navigateTo('settings'), 'Settings');
     Utils.registerShortcut('Ctrl+B', toggleTheme, 'Toggle Theme');
     Utils.registerShortcut('Esc', () => {
-      [invModal, recModal, shortcutsModal].forEach(m => { if (m) m.style.display = 'none'; });
+      [invModal, recModal, quotModal, shortcutsModal].forEach(m => { if (m) m.style.display = 'none'; });
     }, 'Close Modal');
 
     Utils.initShortcuts();
@@ -2634,6 +3404,7 @@
     AuthModule.init();
     NavigationModule.init();
     InvoiceModule.init();
+    QuotationModule.init();
     ReceiptModule.init();
     UserManagementModule.init();
     CustomersModule.init();
