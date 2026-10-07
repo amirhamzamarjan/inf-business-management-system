@@ -176,6 +176,34 @@
     color: #374151 !important;
   }
 
+  /* Project / Subject Bar */
+  .lx-subject-bar {
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 6pt !important;
+    background: #f8fafc !important;
+    border-left: 2.5pt solid #111827 !important;
+    padding: 6pt 10pt !important;
+    margin: -8pt 0 12pt 0 !important;
+    font-size: 8pt !important;
+    page-break-inside: avoid !important;
+  }
+
+  .lx-subject-label {
+    font-weight: 700 !important;
+    color: #4b5563 !important;
+    text-transform: uppercase !important;
+    font-size: 7pt !important;
+    letter-spacing: 0.5pt !important;
+    white-space: nowrap !important;
+  }
+
+  .lx-subject-text {
+    font-weight: 600 !important;
+    color: #111827 !important;
+    font-size: 8.5pt !important;
+  }
+
   /* Table */
   .lx-table {
     width: 100% !important;

@@ -539,6 +539,7 @@ CREATE TABLE IF NOT EXISTS public.quotations (
   other_charges NUMERIC(12, 2) NOT NULL DEFAULT 0,
   grand_total NUMERIC(12, 2) NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Sent', 'Approved', 'Rejected', 'Converted to Invoice')),
+  project_name TEXT,
   converted_invoice_id UUID REFERENCES public.invoices(id) ON DELETE SET NULL,
   converted_invoice_number TEXT,
   notes TEXT,
@@ -567,7 +568,13 @@ CREATE TABLE IF NOT EXISTS public.quotation_items (
 
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON public.quotation_items(quotation_id);
 
--- 7.4 Add source_quotation_id to invoices for bidirectional relationship
+-- 7.4 Add source_quotation_id and project_name to invoices and quotations (Additive & Safe)
+ALTER TABLE public.quotations 
+ADD COLUMN IF NOT EXISTS project_name TEXT;
+
+ALTER TABLE public.invoices 
+ADD COLUMN IF NOT EXISTS project_name TEXT;
+
 ALTER TABLE public.invoices 
 ADD COLUMN IF NOT EXISTS source_quotation_id UUID REFERENCES public.quotations(id) ON DELETE SET NULL;
 
@@ -654,6 +661,7 @@ BEGIN
     terms,
     prepared_by_name,
     prepared_by_id,
+    project_name,
     source_quotation_id
   ) VALUES (
     v_inv_num,
@@ -678,6 +686,7 @@ BEGIN
     v_q.terms,
     v_q.prepared_by_name,
     v_q.prepared_by_id,
+    v_q.project_name,
     v_q.id
   ) RETURNING id INTO v_inv_id;
 

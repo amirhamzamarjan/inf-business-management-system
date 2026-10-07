@@ -1028,6 +1028,9 @@
       if (statusEl) statusEl.value = 'Draft';
       if (notesEl) notesEl.value = '';
 
+      const projEl = document.getElementById('qtProjectName');
+      if (projEl) projEl.value = '';
+
       const formTitle = document.getElementById('quotationFormTitle');
       if (formTitle) formTitle.textContent = 'New Quotation';
 
@@ -1152,6 +1155,7 @@
         other_charges: calc.otherCharges,
         grand_total: calc.grandTotal,
         status: document.getElementById('qtStatus')?.value || 'Draft',
+        project_name: document.getElementById('qtProjectName')?.value?.trim() || '',
         notes: document.getElementById('qtNotes')?.value?.trim() || '',
         prepared_by_name: currentProfile ? currentProfile.full_name : 'Staff',
         items: itemsData.filter(it => it.description || it.rate > 0),
@@ -1232,6 +1236,7 @@
             <td>${q.valid_until ? Utils.formatDate(q.valid_until) : '—'}</td>
             <td>
               <div style="font-weight:600">${Utils.esc(q.customer_name)}</div>
+              ${q.project_name ? `<div style="font-size:0.75rem;color:var(--primary);font-weight:600;margin-top:2px">📌 ${Utils.esc(q.project_name)}</div>` : ''}
               ${q.customer_phone ? `<div style="font-size:0.75rem;color:var(--text-muted)">${Utils.esc(q.customer_phone)}</div>` : ''}
             </td>
             <td><strong>${Utils.formatCurrency(q.grand_total)}</strong></td>
@@ -1313,6 +1318,9 @@
       document.getElementById('qtOtherCharges').value = q.other_charges || 0;
       document.getElementById('qtStatus').value = q.status || 'Draft';
       document.getElementById('qtNotes').value = q.notes || '';
+
+      const projEl = document.getElementById('qtProjectName');
+      if (projEl) projEl.value = q.project_name || '';
 
       const formTitle = document.getElementById('quotationFormTitle');
       if (formTitle) formTitle.textContent = `Edit Quotation ${q.quotation_number}`;
@@ -1434,9 +1442,9 @@
         Utils.notify('No quotations to export', 'warning');
         return;
       }
-      let csv = 'Quotation Number,Date,Valid Until,Customer,Phone,Grand Total,Status,Converted Invoice,Prepared By\n';
+      let csv = 'Quotation Number,Date,Valid Until,Project/Subject,Customer,Phone,Grand Total,Status,Converted Invoice,Prepared By\n';
       quotations.forEach(q => {
-        csv += `"${q.quotation_number}","${q.date}","${q.valid_until || ''}","${q.customer_name}","${q.customer_phone || ''}",${q.grand_total},"${q.status}","${q.invoice_number || ''}","${q.prepared_by_name || ''}"\n`;
+        csv += `"${q.quotation_number}","${q.date}","${q.valid_until || ''}","${q.project_name || ''}","${q.customer_name}","${q.customer_phone || ''}",${q.grand_total},"${q.status}","${q.invoice_number || ''}","${q.prepared_by_name || ''}"\n`;
       });
       Utils.downloadFile(csv, `informix_quotations_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
       Utils.notify('Quotations exported to CSV', 'success');
@@ -2643,6 +2651,14 @@
             </div>
           </div>
 
+          <!-- Project / Subject Banner (if invoice has project_name) -->
+          ${inv.project_name ? `
+            <div class="lx-subject-bar">
+              <span class="lx-subject-label">Project / Subject:</span>
+              <span class="lx-subject-text">${Utils.esc(inv.project_name)}</span>
+            </div>
+          ` : ''}
+
           <!-- Line Items Table -->
           <table class="lx-table">
             <thead>
@@ -2939,6 +2955,14 @@
               <div class="lx-info-box__line">Delivery: As scheduled with client</div>
             </div>
           </div>
+
+          <!-- Project / Subject Banner -->
+          ${q.project_name ? `
+            <div class="lx-subject-bar">
+              <span class="lx-subject-label">Project / Subject:</span>
+              <span class="lx-subject-text">${Utils.esc(q.project_name)}</span>
+            </div>
+          ` : ''}
 
           <!-- Line Items Table -->
           <table class="lx-table">

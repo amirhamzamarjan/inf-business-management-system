@@ -635,6 +635,9 @@ const SupabaseService = (() => {
     if (invoiceData.source_quotation_id) {
       payload.source_quotation_id = invoiceData.source_quotation_id;
     }
+    if (invoiceData.project_name) {
+      payload.project_name = (invoiceData.project_name || '').trim();
+    }
 
     let savedInvoice = null;
 
@@ -656,9 +659,10 @@ const SupabaseService = (() => {
     }
 
     let saveRes = await executeInvoiceSave(payload);
-    // Backward-compatibility: If database has not yet added source_quotation_id column, retry without it
-    if (saveRes.error && (saveRes.error.code === '42703' || saveRes.error.message?.includes('source_quotation_id')) && payload.source_quotation_id) {
-      delete payload.source_quotation_id;
+    // Backward-compatibility: If database has not yet added source_quotation_id or project_name column, retry safely
+    if (saveRes.error && (saveRes.error.code === '42703' || saveRes.error.message?.includes('source_quotation_id') || saveRes.error.message?.includes('project_name'))) {
+      if (payload.project_name && saveRes.error.message?.includes('project_name')) delete payload.project_name;
+      if (payload.source_quotation_id && saveRes.error.message?.includes('source_quotation_id')) delete payload.source_quotation_id;
       saveRes = await executeInvoiceSave(payload);
     }
     if (saveRes.error) throw saveRes.error;
@@ -757,7 +761,7 @@ const SupabaseService = (() => {
       }
       if (filters.search) {
         const s = filters.search.trim();
-        query = query.or(`quotation_number.ilike.%${s}%,customer_name.ilike.%${s}%,customer_phone.ilike.%${s}%`);
+        query = query.or(`quotation_number.ilike.%${s}%,customer_name.ilike.%${s}%,customer_phone.ilike.%${s}%,project_name.ilike.%${s}%`);
       }
 
       const { data, error } = await query;
@@ -847,28 +851,39 @@ const SupabaseService = (() => {
     if (quotationData.converted_invoice_number) {
       payload.converted_invoice_number = quotationData.converted_invoice_number;
     }
+    if (quotationData.project_name) {
+      payload.project_name = (quotationData.project_name || '').trim();
+    }
 
     let savedQuotation = null;
 
-    if (quotationData.id) {
-      const { data, error } = await sb
-        .from('quotations')
-        .update(payload)
-        .eq('id', quotationData.id)
-        .select()
-        .single();
-      if (error) throw error;
-      savedQuotation = data;
+    async function executeQuotationSave(p) {
+      if (quotationData.id) {
+        return sb
+          .from('quotations')
+          .update(p)
+          .eq('id', quotationData.id)
+          .select()
+          .single();
+      } else {
+        return sb
+          .from('quotations')
+          .insert([p])
+          .select()
+          .single();
+      }
+    }
 
+    let saveRes = await executeQuotationSave(payload);
+    if (saveRes.error && (saveRes.error.code === '42703' || saveRes.error.message?.includes('project_name')) && payload.project_name) {
+      delete payload.project_name;
+      saveRes = await executeQuotationSave(payload);
+    }
+    if (saveRes.error) throw saveRes.error;
+    savedQuotation = saveRes.data;
+
+    if (quotationData.id) {
       await sb.from('quotation_items').delete().eq('quotation_id', quotationData.id);
-    } else {
-      const { data, error } = await sb
-        .from('quotations')
-        .insert([payload])
-        .select()
-        .single();
-      if (error) throw error;
-      savedQuotation = data;
     }
 
     // Insert line items
@@ -954,6 +969,7 @@ const SupabaseService = (() => {
       payment_status: 'Due',
       notes: q.notes,
       terms: q.terms,
+      project_name: q.project_name || null,
       source_quotation_id: q.id,
     };
 

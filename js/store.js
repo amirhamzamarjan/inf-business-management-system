@@ -231,6 +231,7 @@ const Store = (() => {
         payment_status: 'Due',
         notes: q.notes,
         terms: q.terms,
+        project_name: q.project_name || null,
         source_quotation_id: q.id,
       };
       const items = (q.quotation_items || q.items || []).map(it => ({

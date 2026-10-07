@@ -35,6 +35,8 @@ const requiredHtmlIds = [
   'qtNumber',
   'qtDate',
   'qtValidUntil',
+  'qtStatus',
+  'qtProjectName',
   'qtCustomerName',
   'qtCustomerPhone',
   'qtCustomerEmail',
@@ -165,6 +167,7 @@ const dummyQuotation = {
   other_charges: 0,
   grand_total: 47250,
   status: 'Sent',
+  project_name: 'Corporate Surveillance System Setup',
   notes: 'Installation warranty included for 12 months.',
   prepared_by_name: 'Amir Hamza Marjan',
   items: [
@@ -178,6 +181,7 @@ const dummyInvoice = {
   invoice_number: 'INV-2026-0001',
   source_quotation_id: 'qt-101',
   quotation_number: 'QT-2026-0001',
+  project_name: 'Corporate Surveillance System Setup',
   date: '2026-10-07',
   customer_name: 'Marjan Assignment Tech Ltd',
   customer_phone: '+880 1819 123456',
@@ -222,6 +226,8 @@ assert(quotHtml.includes('Bank &amp; Payment Information') || quotHtml.includes(
 assert(quotHtml.includes('City Bank Bangladesh'), 'Quotation HTML shows bank name');
 assert(quotHtml.includes('1102938475001'), 'Quotation HTML shows bank account number');
 assert(quotHtml.includes('IP Camera 8-Channel NVR'), 'Quotation HTML renders line item');
+assert(quotHtml.includes('Project / Subject:'), 'Quotation HTML renders Project / Subject label');
+assert(quotHtml.includes('Corporate Surveillance System Setup'), 'Quotation HTML renders Project Name value');
 
 // Test Invoice HTML
 const invHtml = Renderer.buildInvoiceHTML(dummyInvoice, dummySettings, false);
@@ -231,6 +237,7 @@ assert(!invHtml.includes('<div class="lx-header__company">'), 'Invoice HTML head
 assert(invHtml.includes('Source Quotation: QT-2026-0001'), 'Invoice HTML displays linked Source Quotation badge');
 assert(invHtml.includes('Amount in Words'), 'Invoice HTML contains Amount in Words');
 assert(invHtml.includes('Bank &amp; Payment Information') || invHtml.includes('Bank & Payment Information'), 'Invoice HTML contains Bank & Payment Information');
+assert(invHtml.includes('Corporate Surveillance System Setup'), 'Invoice HTML displays Project Name when present');
 
 // Test Legacy Invoice (no quotation fields)
 const legacyInvoice = {
@@ -305,6 +312,7 @@ const migrationSql = fs.readFileSync(path.join(__dirname, 'quotations-migration.
 assert(migrationSql.includes('CREATE TABLE IF NOT EXISTS public.quotations'), 'Migration creates public.quotations safely');
 assert(migrationSql.includes('CREATE TABLE IF NOT EXISTS public.quotation_items'), 'Migration creates public.quotation_items safely');
 assert(migrationSql.includes('ADD COLUMN IF NOT EXISTS source_quotation_id'), 'Migration adds source_quotation_id safely without DROP');
+assert(migrationSql.includes('ADD COLUMN IF NOT EXISTS project_name'), 'Migration adds project_name safely without DROP');
 assert(migrationSql.includes('convert_quotation_to_invoice'), 'Migration contains atomic convert_quotation_to_invoice function');
 assert(migrationSql.includes('has already been converted'), 'Migration prevents duplicate conversion at database level');
 assert(!migrationSql.includes('DROP TABLE'), 'Migration has ZERO DROP TABLE statements (100% data safe)');
