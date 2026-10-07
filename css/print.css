@@ -370,27 +370,33 @@
 
   .cp-header__main {
     display: flex !important;
+    flex-direction: row !important;
     justify-content: space-between !important;
-    align-items: flex-start !important;
+    align-items: center !important;
     padding-bottom: 8pt !important;
   }
 
   .cp-header__brand {
-    max-width: 50% !important;
+    max-width: 45% !important;
+    flex: 0 0 auto !important;
   }
 
   .cp-header__logo {
-    max-height: 42pt !important;
-    max-width: 200pt !important;
+    max-height: 40pt !important;
+    max-width: 180pt !important;
     display: block !important;
     object-fit: contain !important;
   }
 
   .cp-header__contact {
+    flex: 1 1 auto !important;
     text-align: right !important;
     font-size: 7.5pt !important;
     color: #374151 !important;
     line-height: 1.4 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
   }
 
   .cp-contact-row {
@@ -399,6 +405,7 @@
     align-items: center !important;
     gap: 4pt !important;
     margin: 1.5pt 0 !important;
+    white-space: nowrap !important;
   }
 
   .cp-brand-bar, .cp-footer-rule {

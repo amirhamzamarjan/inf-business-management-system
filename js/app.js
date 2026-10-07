@@ -4131,8 +4131,19 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
 
-    // Wait slightly for browser layout
-    await new Promise(r => setTimeout(r, 100));
+    // Wait for images (especially company logo) to fully load inside offscreen container
+    const images = Array.from(container.querySelectorAll('img'));
+    if (images.length) {
+      await Promise.all(images.map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          setTimeout(resolve, 350);
+        });
+      }));
+    }
+    await new Promise(r => setTimeout(r, 120));
 
     try {
       if (window.html2canvas) {
@@ -4149,13 +4160,23 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
             const badge = pageEl.querySelector('.cp-page-badge');
             if (badge) badge.style.display = 'none';
 
+            // Ensure exact dimensions on offscreen sheet
+            pageEl.style.width = '794px';
+            pageEl.style.minWidth = '794px';
+            pageEl.style.maxWidth = '794px';
+            pageEl.style.height = '1123px';
+            pageEl.style.minHeight = '1123px';
+            pageEl.style.maxHeight = '1123px';
+
             const pageCanvas = await window.html2canvas(pageEl, {
               scale: 2,
               useCORS: true,
               allowTaint: true,
               backgroundColor: '#ffffff',
               logging: false,
-              windowWidth: 794,
+              windowWidth: 1200,
+              width: 794,
+              height: 1123,
             });
 
             if (badge) badge.style.display = '';

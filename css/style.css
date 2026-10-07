@@ -1319,7 +1319,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   animation: modalPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .modal--sm { max-width: 460px; }
-.modal--luxury { max-width: 860px; }
+.modal--luxury { max-width: 900px; }
 
 @keyframes modalPop {
   from { opacity: 0; transform: scale(0.96); }
@@ -1743,7 +1743,7 @@ kbd {
   .customer-detail__stats { grid-template-columns: 1fr 1fr; }
   .shortcuts-grid { grid-template-columns: 1fr; }
 
-  .luxury-document { padding: 24px 18px; }
+  .luxury-document:not(.company-pad-document) { padding: 24px 18px; }
   .lx-header { flex-direction: column; gap: 12px; }
   .lx-header__contact { text-align: left; }
   .lx-meta-bar { flex-direction: column; gap: 10px; }
@@ -1752,13 +1752,6 @@ kbd {
   .lx-summary-wrap { grid-template-columns: 1fr; }
   .lx-signatures { flex-direction: column; gap: 20px; }
   .lx-sig-box { width: 100%; }
-
-  .company-pad-document { padding: 28px 20px; }
-  .cp-header__main { flex-direction: column; gap: 12px; }
-  .cp-header__contact { text-align: left; }
-  .cp-contact-row { justify-content: flex-start; }
-  .cp-meta-bar { flex-direction: column; gap: 8px; }
-  .cp-meta-right { text-align: left; }
 }
 
 /* ====================================================================
@@ -1933,14 +1926,16 @@ kbd {
 
 /* Discrete A4 Sheet Page in Multi-Page Mode */
 .cp-page {
-  width: 794px;
-  height: 1123px;
-  max-height: 1123px;
-  min-height: 1123px;
-  padding: 42px 48px 30px 48px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
+  width: 794px !important;
+  min-width: 794px !important;
+  max-width: 794px !important;
+  height: 1123px !important;
+  min-height: 1123px !important;
+  max-height: 1123px !important;
+  padding: 42px 48px 30px 48px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
   position: relative;
   overflow: hidden;
 }
@@ -1968,33 +1963,41 @@ kbd {
   margin-bottom: 20px;
 }
 .cp-header__main {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  padding-bottom: 14px;
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding-bottom: 12px !important;
 }
 .cp-header__brand {
-  max-width: 52%;
+  flex: 0 0 auto !important;
+  max-width: 45% !important;
 }
 .cp-header__logo {
-  height: 52px;
-  max-width: 250px;
-  object-fit: contain;
-  display: block;
+  height: 48px !important;
+  max-height: 48px !important;
+  max-width: 240px !important;
+  object-fit: contain !important;
+  display: block !important;
 }
 .cp-header__contact {
-  text-align: right;
-  font-size: 8pt;
-  color: #475569;
-  line-height: 1.5;
+  flex: 1 1 auto !important;
+  text-align: right !important;
+  font-size: 7.8pt !important;
+  color: #475569 !important;
+  line-height: 1.45 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
 }
 .cp-contact-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  margin: 2px 0;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 5px !important;
+  margin: 1.5px 0 !important;
+  white-space: nowrap !important;
 }
 .cp-contact-icon {
   display: inline-flex;
@@ -2029,13 +2032,14 @@ kbd {
 
 /* 2. Document Meta Bar (Ref, Date, Status) */
 .cp-meta-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 10px 0 12px 0;
-  font-size: 8.5pt;
-  border-bottom: 1px solid #f1f5f9;
-  margin-bottom: 16px;
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  padding: 10px 0 12px 0 !important;
+  font-size: 8.5pt !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  margin-bottom: 16px !important;
 }
 .cp-meta-left {
   display: flex;
@@ -2308,33 +2312,16 @@ kbd {
   letter-spacing: 0.5px;
 }
 
-/* Responsive Scaling for Multi-Page Preview */
+/* Responsive Preview Wrapper: smoothly scrollable A4 sheets without distorting proportions */
 @media (max-width: 860px) {
-  .company-pad-document,
-  .cp-page {
-    width: 100% !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    padding: 24px 18px !important;
+  .company-pad-multipage {
+    overflow-x: auto !important;
+    padding: 14px 8px !important;
+    align-items: flex-start !important;
   }
-  .cp-page-badge {
-    display: none !important;
-  }
-  .cp-header__main {
-    flex-direction: column;
-    gap: 12px;
-  }
-  .cp-header__contact {
-    text-align: left;
-  }
-  .cp-contact-row {
-    justify-content: flex-start;
-  }
-  .cp-cont-header__top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+  .modal--luxury .modal__body--preview {
+    overflow-x: auto !important;
+    padding: 12px !important;
   }
 }
 
