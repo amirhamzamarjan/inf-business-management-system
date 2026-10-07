@@ -203,6 +203,89 @@ const padNoRecipient = Object.assign({}, dummyPad, { recipient_name: '', recipie
 const padNoRecHtml = Renderer.buildCompanyPadHTML(padNoRecipient, dummySettings, false);
 assert(!padNoRecHtml.includes('cp-recipient-box'), 'Pad HTML cleanly omits recipient box when recipient is not specified');
 
+// Verify single-page numbering
+assert(padHtml.includes('Page 1 of 1') || padHtml.includes('Page 1 of 2'), 'Single/compact document has automatic page numbering in footer');
+
+// -------------------------------------------------------------
+// 3.5. Multi-Page Letterhead Pagination Behavior (Page 1 Full vs Page 2+ Continuation)
+// -------------------------------------------------------------
+console.log('\n--- TEST 3.5: Multi-Page Document Pagination & Continuation Rules ---');
+
+const longProposalContent = `
+  <p>INFORMIX BD is pleased to submit this comprehensive turn-key enterprise infrastructure and security deployment proposal. Our certified systems engineering team will oversee all aspects of physical, logical, and optical integration.</p>
+  <h2>1. Scope of Work and Executive Architecture</h2>
+  <p>The proposed framework encompasses primary optical distribution routing, multi-gigabit campus switching backbones, core perimeter firewalls, and 4K Ultra-HD AI-driven CCTV surveillance arrays. All components will be deployed in redundant configurations to eliminate single points of failure across the client headquarters and disaster recovery facilities.</p>
+  <p>Furthermore, structured CAT6A shielded cabling will be laid throughout the enterprise server rooms, wiring closets, and executive work zones in full adherence to ANSI/TIA-568-D standards. Each termination point will be rigorously certified with digital fluke analyzers before live cutover.</p>
+  <h2>2. Hardware & Surveillance Bill of Quantities</h2>
+  <ul>
+    <li>32-Channel Enterprise NVR with 64TB Hot-Swappable RAID-5 Storage Array</li>
+    <li>16x 4MP Low-Light Starlight Bullet Cameras with 60m Smart IR Night Vision</li>
+    <li>8x 4MP 360-Degree Panoramic Fisheye Cameras for Reception and Corridors</li>
+    <li>24-Port Gigabit Layer-3 Managed PoE+ Distribution Switches (370W PoE Budget)</li>
+    <li>10kVA Online Double-Conversion Rackmount UPS with SNMP Remote Monitoring</li>
+  </ul>
+  <h2>3. Service Level Agreements, Deployment Schedule & Warranty</h2>
+  <p>Installation and commissioning will be executed within 21 working days from the date of formal contract execution. INFORMIX BD provides 24/7 priority remote diagnostics, next-business-day on-site hardware replacement, and complimentary quarterly preventive maintenance inspections for a duration of 12 full months.</p>
+  <p>All software patches, firmware security updates, and operational staff training sessions for client security personnel will be provided at zero additional cost during the warranty term.</p>
+  <p>We trust this proposal fulfills your institutional parameters and look forward to partnering on this transformative digital and physical infrastructure initiative.</p>
+`;
+
+const multiPagePad = Object.assign({}, dummyPad, {
+  id: 'pad-multipage-002',
+  pad_number: 'PAD-2026-000002',
+  topic: 'Turn-Key Enterprise Surveillance & Campus Optical Network Agreement',
+  content: longProposalContent,
+});
+
+const multiPageHtml = Renderer.buildCompanyPadHTML(multiPagePad, dummySettings, false);
+
+// Check that multi-page container exists
+assert(multiPageHtml.includes('company-pad-multipage'), 'Multi-page document is wrapped in .company-pad-multipage container');
+
+// Extract actual total pages count
+const totalPagesMatch = multiPageHtml.match(/data-total-pages="(\d+)"/);
+const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1], 10) : 1;
+const pageSheets = multiPageHtml.match(/class="[^"]*\bcp-page-\d+\b[^"]*"/g) || [];
+
+assert(totalPages >= 2, `Multi-page document successfully calculated totalPages >= 2 (actual: ${totalPages})`);
+assert(pageSheets.length === totalPages, `Multi-page document generated exactly ${totalPages} discrete A4 page sheets`);
+
+// Check PAGE 1 has Full Header, Topic Section, and Recipient Box
+assert(multiPageHtml.includes('cp-page-1'), 'Document contains Page 1 element (.cp-page-1)');
+const page1Slice = multiPageHtml.slice(multiPageHtml.indexOf('cp-page-1'), multiPageHtml.indexOf('cp-page-2'));
+assert(page1Slice.includes('cp-header'), 'PAGE 1 contains Full Executive Header (.cp-header)');
+assert(page1Slice.includes('cp-topic-section'), 'PAGE 1 contains Document Topic / Subject title section');
+assert(page1Slice.includes('cp-recipient-box'), 'PAGE 1 contains Recipient Information block');
+assert(page1Slice.includes(`Page 1 of ${totalPages}`), `PAGE 1 footer displays "Page 1 of ${totalPages}"`);
+
+// Check PAGE 2 (Continuation Page) has Simplified Continuation Header
+assert(multiPageHtml.includes('cp-continuation-page'), 'Document contains Continuation Page (.cp-continuation-page)');
+const page2Slice = multiPageHtml.slice(multiPageHtml.indexOf('cp-page-2'));
+assert(page2Slice.includes('cp-cont-header'), 'PAGE 2 contains Simplified Continuation Header (.cp-cont-header)');
+assert(page2Slice.includes('cp-cont-logo'), 'Continuation Header contains compact INFORMIX BD logo');
+assert(page2Slice.includes('cp-cont-meta'), 'Continuation Header contains document ID, ref, and date metadata');
+assert(page2Slice.includes('cp-brand-bar--compact'), 'Continuation Header contains compact brand rule (Black, Red, Cyan micro-accent)');
+
+// CRITICAL MULTI-PAGE RULE VERIFICATION: Continuation page must NOT repeat full header, topic or recipient!
+assert(!page2Slice.includes('cp-topic-section'), 'PAGE 2 does NOT repeat the Document Topic / Subject section');
+assert(!page2Slice.includes('cp-recipient-box'), 'PAGE 2 does NOT repeat the Recipient Information block');
+assert(!page2Slice.includes('<div class="cp-header">'), 'PAGE 2 does NOT repeat the large first-page header banner');
+
+// Check PAGE 2 footer has correct page numbering
+assert(page2Slice.includes(`Page 2 of ${totalPages}`), `PAGE 2 footer displays "Page 2 of ${totalPages}"`);
+assert(page2Slice.includes('cp-footer-rule'), 'PAGE 2 contains professional footer brand rule');
+assert(page2Slice.includes(dummySettings.phone), 'PAGE 2 footer contains official company phone');
+
+// Check CSS rules for multi-page and continuation header
+assert(styleCss.includes('.company-pad-multipage'), 'style.css defines .company-pad-multipage');
+assert(styleCss.includes('.cp-cont-header'), 'style.css defines .cp-cont-header simplified continuation header');
+assert(styleCss.includes('.cp-page-number'), 'style.css defines .cp-page-number automatic numbering pill');
+assert(printCss.includes('.company-pad-multipage'), 'print.css defines .company-pad-multipage');
+assert(printCss.includes('.cp-cont-header'), 'print.css defines .cp-cont-header print rules');
+assert(printCss.includes('.cp-page-number'), 'print.css defines .cp-page-number print rules');
+assert(printCss.includes('page-break-after: always') || printCss.includes('break-after: page'), 'print.css enforces A4 page-break-after on each sheet');
+
+
 // -------------------------------------------------------------
 // 4. Check Data Layer & Supabase Safe Bridge
 // -------------------------------------------------------------

@@ -319,17 +319,47 @@
   }
 
   /* Company Pad A4 Print Formatting */
-  .company-pad-document {
+  .company-pad-multipage {
+    display: block !important;
     width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
     padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+
+  .company-pad-document {
+    color: #0f172a !important;
     box-shadow: none !important;
     border: none !important;
     background: #ffffff !important;
-    color: #0f172a !important;
-    min-height: auto !important;
-    display: block !important;
+  }
+
+  .company-pad-document.cp-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    box-sizing: border-box !important;
+    padding: 12mm 15mm 10mm 15mm !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  .company-pad-document.cp-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .cp-page-badge {
+    display: none !important;
   }
 
   .cp-header {
@@ -526,14 +556,70 @@
     color: #d90429 !important;
   }
 
+  /* Continuation Header for Page 2+ in Print */
+  .cp-cont-header {
+    margin-bottom: 12pt !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .cp-cont-header__top {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding-bottom: 4pt !important;
+  }
+  .cp-cont-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6pt !important;
+  }
+  .cp-cont-logo {
+    max-height: 18pt !important;
+    max-width: 90pt !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+  .cp-cont-tagline {
+    font-size: 6pt !important;
+    font-weight: 700 !important;
+    color: #4b5563 !important;
+    border-left: 0.8pt solid #cbd5e1 !important;
+    padding-left: 5pt !important;
+    text-transform: uppercase !important;
+  }
+  .cp-cont-meta {
+    font-size: 6.8pt !important;
+    color: #4b5563 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4pt !important;
+  }
+  .cp-cont-item strong {
+    color: #0f172a !important;
+  }
+  .cp-cont-sep {
+    color: #cbd5e1 !important;
+  }
+  .cp-brand-bar--compact {
+    height: 1.8pt !important;
+    display: flex !important;
+  }
+  .cp-brand-bar--compact .cp-bar-red {
+    width: 26pt !important;
+  }
+  .cp-brand-bar--compact .cp-bar-cyan {
+    width: 7pt !important;
+  }
+
   .cp-footer {
-    margin-top: 16pt !important;
+    margin-top: auto !important;
+    padding-top: 10pt !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
   .cp-footer-body {
-    padding-top: 5pt !important;
+    padding-top: 4pt !important;
     text-align: center !important;
   }
 
@@ -542,11 +628,29 @@
     color: #4b5563 !important;
   }
 
+  .cp-footer-meta {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-top: 2.5pt !important;
+  }
+
   .cp-footer-notice {
     font-size: 6pt !important;
     font-weight: 700 !important;
     color: #94a3b8 !important;
     letter-spacing: 0.8pt !important;
-    margin-top: 2pt !important;
+    text-transform: uppercase !important;
+  }
+
+  .cp-page-number {
+    font-size: 7.2pt !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    font-family: monospace !important;
+    display: inline-block !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
   }
 }

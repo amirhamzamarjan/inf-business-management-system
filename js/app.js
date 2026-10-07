@@ -3707,6 +3707,220 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
       `;
     }
 
+    function paginatePadContent(contentHtml, hasRecipient, includeSignBlock) {
+      // Calibrated A4 capacities at 96 DPI (Height: 1123px)
+      // Page 1 contains full letterhead header, meta bar, optional recipient, topic title, footer
+      const page1Capacity = hasRecipient ? 680 : 740;
+      // Continuation pages contain compact header (42px) and footer (54px), giving ~920px usable space
+      const contCapacity = 920;
+      const signoffHeight = includeSignBlock ? 120 : 0;
+
+      const rawHtml = (contentHtml || '').trim();
+      if (!rawHtml) {
+        return [{ html: '<p></p>', pageNum: 1, isFirst: true, isLast: true, hasSignoff: includeSignBlock }];
+      }
+
+      // Extract discrete semantic blocks
+      const blocks = [];
+      const docObj = (typeof document !== 'undefined' && document.createElement) ? document : null;
+
+      if (docObj) {
+        const div = docObj.createElement('div');
+        div.innerHTML = rawHtml;
+        const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'div', 'hr', 'table'];
+
+        let pendingInline = [];
+        function flushPending() {
+          if (pendingInline.length > 0) {
+            const p = docObj.createElement('p');
+            pendingInline.forEach(n => { if (p.appendChild) p.appendChild(n.cloneNode ? n.cloneNode(true) : n); });
+            const txt = (p.textContent || '').trim();
+            if (txt || (p.children && p.children.length > 0)) {
+              blocks.push({
+                tag: 'p',
+                text: txt,
+                html: p.outerHTML || `<p>${txt}</p>`
+              });
+            }
+            pendingInline = [];
+          }
+        }
+
+        if (div.childNodes && div.childNodes.length) {
+          Array.from(div.childNodes).forEach(node => {
+            if (node.nodeType === 1) { // ELEMENT
+              const tag = (node.tagName || '').toLowerCase();
+              if (blockTags.includes(tag)) {
+                flushPending();
+                blocks.push({
+                  tag: tag,
+                  text: (node.textContent || '').trim(),
+                  html: node.outerHTML || `<${tag}>${node.textContent || ''}</${tag}>`
+                });
+              } else {
+                pendingInline.push(node);
+              }
+            } else if (node.nodeType === 3) { // TEXT
+              if (node.textContent && node.textContent.trim()) {
+                pendingInline.push(node);
+              }
+            }
+          });
+          flushPending();
+        }
+      }
+
+      // Regex fallback if DOM parse produced 0 blocks (e.g. test runner or plain strings)
+      if (!blocks.length) {
+        const tagRegex = /<(p|h[1-6]|ul|ol|blockquote|div|hr)[^>]*>[\s\S]*?<\/\1>|<hr\s*\/?>/gi;
+        let match;
+        while ((match = tagRegex.exec(rawHtml)) !== null) {
+          const matchedHtml = match[0];
+          const tag = match[1] ? match[1].toLowerCase() : 'hr';
+          const cleanText = matchedHtml.replace(/<[^>]+>/g, '').trim();
+          blocks.push({
+            tag: tag,
+            text: cleanText,
+            html: matchedHtml
+          });
+        }
+
+        if (!blocks.length) {
+          const paragraphs = rawHtml.split(/<\/p>|<br\s*\/?>\s*<br\s*\/?>/i);
+          paragraphs.forEach(pText => {
+            const clean = pText.replace(/<[^>]+>/g, '').trim();
+            if (clean) {
+              blocks.push({
+                tag: 'p',
+                text: clean,
+                html: pText.includes('<p>') ? `${pText}</p>` : `<p>${clean}</p>`
+              });
+            }
+          });
+        }
+      }
+
+      if (!blocks.length) {
+        return [{ html: rawHtml, pageNum: 1, isFirst: true, isLast: true, hasSignoff: includeSignBlock }];
+      }
+
+      function calcHeight(b) {
+        const len = (b.text || '').length;
+        const tag = b.tag || 'p';
+        if (tag === 'hr') return 24;
+        if (tag === 'h1') return 48;
+        if (tag === 'h2') return 42;
+        if (tag === 'h3') return 36;
+        if (tag === 'ul' || tag === 'ol') {
+          const liMatches = (b.html || '').match(/<li/gi);
+          const count = liMatches ? liMatches.length : Math.max(1, Math.ceil(len / 60));
+          return count * 28 + 16;
+        }
+        if (tag === 'blockquote') {
+          const lines = Math.max(1, Math.ceil(len / 75));
+          return lines * 23 + 28;
+        }
+        const lines = Math.max(1, Math.ceil(len / 82));
+        return lines * 23 + 16;
+      }
+
+      const pages = [];
+      let curBlocks = [];
+      let curHeight = 0;
+      let isFirstPage = true;
+      let limit = page1Capacity;
+
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        const h = calcHeight(b);
+
+        // Orphan heading protection: don't leave h2/h3 alone at the bottom
+        const isHeading = b.tag && b.tag.startsWith('h');
+        const wouldOrphan = isHeading && (curHeight + h + 60 > limit);
+
+        if (curBlocks.length > 0 && (curHeight + h > limit || wouldOrphan)) {
+          // If a long paragraph can be split cleanly by sentences across pages
+          if (b.tag === 'p' && (b.text || '').length > 280 && curHeight + 90 < limit) {
+            const sentences = b.text.split(/(?<=[.!?])\s+/);
+            if (sentences.length > 1) {
+              let part1 = [];
+              let part2 = [];
+              let hAcc = 0;
+              for (const s of sentences) {
+                const sH = Math.ceil(s.length / 82) * 23;
+                if (curHeight + hAcc + sH + 16 <= limit) {
+                  part1.push(s);
+                  hAcc += sH;
+                } else {
+                  part2.push(s);
+                }
+              }
+              if (part1.length > 0 && part2.length > 0) {
+                curBlocks.push({ html: `<p>${Utils.esc(part1.join(' '))}</p>` });
+                pages.push({
+                  html: curBlocks.map(x => x.html).join(''),
+                  isFirst: isFirstPage,
+                  pageNum: pages.length + 1
+                });
+                curBlocks = [{ html: `<p>${Utils.esc(part2.join(' '))}</p>` }];
+                curHeight = calcHeight({ text: part2.join(' '), tag: 'p' });
+                isFirstPage = false;
+                limit = contCapacity;
+                continue;
+              }
+            }
+          }
+
+          pages.push({
+            html: curBlocks.map(x => x.html).join(''),
+            isFirst: isFirstPage,
+            pageNum: pages.length + 1
+          });
+          curBlocks = [b];
+          curHeight = h;
+          isFirstPage = false;
+          limit = contCapacity;
+        } else {
+          curBlocks.push(b);
+          curHeight += h;
+        }
+      }
+
+      if (curBlocks.length > 0) {
+        const finalLimit = isFirstPage ? page1Capacity : contCapacity;
+        if (includeSignBlock && (curHeight + signoffHeight > finalLimit)) {
+          // Content fills the page, so sign-off starts cleanly on next continuation page
+          pages.push({
+            html: curBlocks.map(x => x.html).join(''),
+            isFirst: isFirstPage,
+            pageNum: pages.length + 1,
+            hasSignoff: false
+          });
+          pages.push({
+            html: '',
+            isFirst: false,
+            pageNum: pages.length + 1,
+            hasSignoff: true
+          });
+        } else {
+          pages.push({
+            html: curBlocks.map(x => x.html).join(''),
+            isFirst: isFirstPage,
+            pageNum: pages.length + 1,
+            hasSignoff: includeSignBlock
+          });
+        }
+      }
+
+      const total = pages.length;
+      pages.forEach((p, idx) => {
+        p.isLast = (idx === total - 1);
+        p.totalPages = total;
+      });
+
+      return pages;
+    }
+
     function buildCompanyPadHTML(pad, settings, isPrint = false) {
       const logoUrl = settings?.logo_url || 'assets/logo.svg';
       const companyName = settings?.company_name || 'INFORMIX BD';
@@ -3720,129 +3934,173 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
       const topic = pad.topic || 'Official Communication';
       const recipient = (pad.recipient_name || '').trim();
       const recipientAddress = (pad.recipient_address || '').trim();
-      const content = pad.content || '<p>No document content specified.</p>';
       const signatoryName = pad.signatory_name || pad.prepared_by_name || 'Authorized Signatory';
       const signatoryTitle = pad.signatory_title || 'Authorized Signatory / Management';
       const includeSignBlock = pad.include_sign_block !== false;
 
-      return `
-        <div class="luxury-document company-pad-document ${isPrint ? 'print-mode' : ''}">
-          <!-- Official Corporate Letterhead Header -->
-          <div class="cp-header">
-            <div class="cp-header__main">
-              <div class="cp-header__brand">
-                <img src="${logoUrl}" alt="${companyName}" class="cp-header__logo" onerror="this.style.display='none'">
-              </div>
-              <div class="cp-header__contact">
-                <div class="cp-contact-row">
-                  <span class="cp-contact-icon">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  </span>
-                  <span>${Utils.esc(address)}</span>
-                </div>
-                <div class="cp-contact-row">
-                  <span class="cp-contact-icon">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                  </span>
-                  <span>${Utils.esc(phone)}</span>
-                  <span class="cp-contact-sep">&bull;</span>
-                  <span class="cp-contact-icon">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  </span>
-                  <span>${Utils.esc(email)}</span>
-                </div>
-                <div class="cp-contact-row">
-                  <span class="cp-contact-icon">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                  </span>
-                  <span>${Utils.esc(website)}</span>
-                </div>
-              </div>
-            </div>
-            <!-- Composite Luxury Brand Rule: Black Structure -> Red Brand Accent -> Cyan Micro Accent -->
-            <div class="cp-brand-bar">
-              <div class="cp-bar-black"></div>
-              <div class="cp-bar-red"></div>
-              <div class="cp-bar-cyan"></div>
-            </div>
-          </div>
+      // Smart Multi-Page Pagination Engine
+      const pages = paginatePadContent(pad.content, !!recipient, includeSignBlock);
+      const totalPages = pages.length;
 
-          <!-- Document Meta Bar (Ref, Doc ID, Date, Status) -->
-          <div class="cp-meta-bar">
-            <div class="cp-meta-left">
-              <div class="cp-ref-line">
-                <span class="cp-meta-label">Ref:</span>
-                <span class="cp-ref-number">${Utils.esc(refNo)}</span>
+      const pagesHTML = pages.map((page) => {
+        const pageNum = page.pageNum;
+        const isFirst = page.isFirst;
+        const isLast = page.isLast;
+        const showSignoff = page.hasSignoff;
+
+        return `
+          <div class="luxury-document company-pad-document cp-page cp-page-${pageNum} ${!isFirst ? 'cp-continuation-page' : ''}" data-page="${pageNum}">
+            <div class="cp-page-badge">Page ${pageNum} of ${totalPages}</div>
+
+            ${isFirst ? `
+              <!-- ===== PAGE 1: FULL EXECUTIVE LETTERHEAD HEADER ===== -->
+              <div class="cp-header">
+                <div class="cp-header__main">
+                  <div class="cp-header__brand">
+                    <img src="${logoUrl}" alt="${companyName}" class="cp-header__logo" onerror="this.style.display='none'">
+                  </div>
+                  <div class="cp-header__contact">
+                    <div class="cp-contact-row">
+                      <span class="cp-contact-icon">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      </span>
+                      <span>${Utils.esc(address)}</span>
+                    </div>
+                    <div class="cp-contact-row">
+                      <span class="cp-contact-icon">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                      </span>
+                      <span>${Utils.esc(phone)}</span>
+                      <span class="cp-contact-sep">&bull;</span>
+                      <span class="cp-contact-icon">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                      </span>
+                      <span>${Utils.esc(email)}</span>
+                    </div>
+                    <div class="cp-contact-row">
+                      <span class="cp-contact-icon">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                      </span>
+                      <span>${Utils.esc(website)}</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- Composite Luxury Brand Rule: Black Structure -> Red Brand Accent -> Cyan Micro Accent -->
+                <div class="cp-brand-bar">
+                  <div class="cp-bar-black"></div>
+                  <div class="cp-bar-red"></div>
+                  <div class="cp-bar-cyan"></div>
+                </div>
               </div>
-              <div class="cp-pad-id-line">
-                <span class="cp-meta-label">Doc ID:</span>
-                <span class="cp-pad-number">${Utils.esc(pad.pad_number || 'PAD-000000')}</span>
+
+              <!-- Document Meta Bar (Ref, Doc ID, Date, Status) -->
+              <div class="cp-meta-bar">
+                <div class="cp-meta-left">
+                  <div class="cp-ref-line">
+                    <span class="cp-meta-label">Ref:</span>
+                    <span class="cp-ref-number">${Utils.esc(refNo)}</span>
+                  </div>
+                  <div class="cp-pad-id-line">
+                    <span class="cp-meta-label">Doc ID:</span>
+                    <span class="cp-pad-number">${Utils.esc(pad.pad_number || 'PAD-000000')}</span>
+                  </div>
+                </div>
+                <div class="cp-meta-right">
+                  <div class="cp-date-line">
+                    <span class="cp-meta-label">Date:</span>
+                    <span class="cp-date-val">${Utils.formatDate(date)}</span>
+                  </div>
+                  ${pad.status ? `
+                    <div class="cp-status-line">
+                      <span class="status-badge status-badge--${(pad.status || 'draft').toLowerCase().replace(/\s+/g, '-')}">${Utils.esc(pad.status)}</span>
+                    </div>
+                  ` : ''}
+                </div>
               </div>
-            </div>
-            <div class="cp-meta-right">
-              <div class="cp-date-line">
-                <span class="cp-meta-label">Date:</span>
-                <span class="cp-date-val">${Utils.formatDate(date)}</span>
-              </div>
-              ${pad.status ? `
-                <div class="cp-status-line">
-                  <span class="status-badge status-badge--${(pad.status || 'draft').toLowerCase().replace(/\s+/g, '-')}">${Utils.esc(pad.status)}</span>
+
+              <!-- Optional Recipient Information Block -->
+              ${recipient ? `
+                <div class="cp-recipient-box">
+                  <div class="cp-recipient-label">To / Addressed To:</div>
+                  <div class="cp-recipient-name">${Utils.esc(recipient)}</div>
+                  ${recipientAddress ? `<div class="cp-recipient-address">${Utils.esc(recipientAddress)}</div>` : ''}
                 </div>
               ` : ''}
+
+              <!-- Prominent Document Topic / Project Name Title -->
+              <div class="cp-topic-section">
+                <div class="cp-topic-badge">Subject / Topic</div>
+                <h1 class="cp-topic-title">${Utils.esc(topic)}</h1>
+              </div>
+            ` : `
+              <!-- ===== PAGE 2+: COMPACT SIMPLIFIED CONTINUATION HEADER ===== -->
+              <div class="cp-cont-header">
+                <div class="cp-cont-header__top">
+                  <div class="cp-cont-brand">
+                    <img src="${logoUrl}" alt="${companyName}" class="cp-cont-logo" onerror="this.style.display='none'">
+                    <span class="cp-cont-tagline">Official Letterhead</span>
+                  </div>
+                  <div class="cp-cont-meta">
+                    <span class="cp-cont-item"><strong>Doc ID:</strong> ${Utils.esc(pad.pad_number || 'PAD-000000')}</span>
+                    <span class="cp-cont-sep">&bull;</span>
+                    <span class="cp-cont-item"><strong>Ref:</strong> ${Utils.esc(refNo)}</span>
+                    <span class="cp-cont-sep">&bull;</span>
+                    <span class="cp-cont-item"><strong>Date:</strong> ${Utils.formatDate(date)}</span>
+                  </div>
+                </div>
+                <!-- Signature Composite Brand Accent Line -->
+                <div class="cp-brand-bar cp-brand-bar--compact">
+                  <div class="cp-bar-black"></div>
+                  <div class="cp-bar-red"></div>
+                  <div class="cp-bar-cyan"></div>
+                </div>
+              </div>
+            `}
+
+            <!-- Document Content Body Slice -->
+            <div class="cp-content-body ${!isFirst ? 'cp-content-body--continuation' : ''}">
+              ${page.html}
             </div>
-          </div>
 
-          <!-- Optional Recipient Information Block -->
-          ${recipient ? `
-            <div class="cp-recipient-box">
-              <div class="cp-recipient-label">To / Addressed To:</div>
-              <div class="cp-recipient-name">${Utils.esc(recipient)}</div>
-              ${recipientAddress ? `<div class="cp-recipient-address">${Utils.esc(recipientAddress)}</div>` : ''}
-            </div>
-          ` : ''}
+            <!-- Sign-Off & Official Authorization Block (Appears only on document end) -->
+            ${isLast && showSignoff ? `
+              <div class="cp-signoff-block">
+                <div class="cp-signoff-wrap">
+                  <div class="cp-signoff-closing">Sincerely,</div>
+                  <div class="cp-signoff-org">For <strong>${Utils.esc(companyName)}</strong></div>
+                  <div class="cp-signoff-seal-space"></div>
+                  <div class="cp-signoff-line"></div>
+                  <div class="cp-signoff-name">${Utils.esc(signatoryName)}</div>
+                  <div class="cp-signoff-title">${Utils.esc(signatoryTitle)}</div>
+                  <div class="cp-signoff-dept">Corporate Office</div>
+                </div>
+              </div>
+            ` : ''}
 
-          <!-- Prominent Document Topic / Project Name Title -->
-          <div class="cp-topic-section">
-            <div class="cp-topic-badge">Subject / Topic</div>
-            <h1 class="cp-topic-title">${Utils.esc(topic)}</h1>
-          </div>
-
-          <!-- Document Content Details -->
-          <div class="cp-content-body">
-            ${content}
-          </div>
-
-          <!-- Sign-Off & Official Authorization Block -->
-          ${includeSignBlock ? `
-            <div class="cp-signoff-block">
-              <div class="cp-signoff-wrap">
-                <div class="cp-signoff-closing">Sincerely,</div>
-                <div class="cp-signoff-org">For <strong>${Utils.esc(companyName)}</strong></div>
-                <div class="cp-signoff-seal-space"></div>
-                <div class="cp-signoff-line"></div>
-                <div class="cp-signoff-name">${Utils.esc(signatoryName)}</div>
-                <div class="cp-signoff-title">${Utils.esc(signatoryTitle)}</div>
-                <div class="cp-signoff-dept">Security &amp; Surveillance Solutions</div>
+            <!-- Official Corporate Footer with Automatic Page Numbering -->
+            <div class="cp-footer">
+              <div class="cp-footer-rule">
+                <div class="cp-bar-black"></div>
+                <div class="cp-bar-red"></div>
+                <div class="cp-bar-cyan"></div>
+              </div>
+              <div class="cp-footer-body">
+                <div class="cp-footer-text">
+                  <strong>${Utils.esc(companyName)}</strong> &bull; ${Utils.esc(address)} &bull; Phone: ${Utils.esc(phone)} &bull; Email: ${Utils.esc(email)} &bull; Web: ${Utils.esc(website)}
+                </div>
+                <div class="cp-footer-meta">
+                  <span class="cp-footer-notice">Official Corporate Letterhead &bull; INFORMIX BD</span>
+                  <span class="cp-page-number">Page ${pageNum} of ${totalPages}</span>
+                </div>
               </div>
             </div>
-          ` : ''}
-
-          <!-- Official Corporate Footer -->
-          <div class="cp-footer">
-            <div class="cp-footer-rule">
-              <div class="cp-bar-black"></div>
-              <div class="cp-bar-red"></div>
-              <div class="cp-bar-cyan"></div>
-            </div>
-            <div class="cp-footer-body">
-              <div class="cp-footer-text">
-                <strong>${Utils.esc(companyName)}</strong> &bull; ${Utils.esc(address)} &bull; Phone: ${Utils.esc(phone)} &bull; Email: ${Utils.esc(email)} &bull; Web: ${Utils.esc(website)}
-              </div>
-              <div class="cp-footer-notice">
-                Official Corporate Letterhead &bull; INFORMIX BD &bull; All Rights Reserved
-              </div>
-            </div>
           </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="company-pad-multipage ${isPrint ? 'print-mode' : ''}" data-total-pages="${totalPages}">
+          ${pagesHTML}
         </div>
       `;
     }
@@ -3878,6 +4136,40 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
 
     try {
       if (window.html2canvas) {
+        const pageEls = container.querySelectorAll('.cp-page');
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = 210;
+        const pdfHeight = 297;
+
+        if (pageEls.length > 0) {
+          // Dedicated Multi-Page Sheet Rendering (1:1 with Preview & Print)
+          for (let i = 0; i < pageEls.length; i++) {
+            const pageEl = pageEls[i];
+            const badge = pageEl.querySelector('.cp-page-badge');
+            if (badge) badge.style.display = 'none';
+
+            const pageCanvas = await window.html2canvas(pageEl, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+              logging: false,
+              windowWidth: 794,
+            });
+
+            if (badge) badge.style.display = '';
+
+            const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.98);
+            if (i > 0) doc.addPage();
+            doc.addImage(pageImgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          }
+
+          doc.save(filename);
+          Utils.notify('Document PDF downloaded successfully', 'success');
+          return;
+        }
+
         const canvas = await window.html2canvas(container, {
           scale: 2,
           useCORS: true,
@@ -3886,11 +4178,6 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
           logging: false,
           windowWidth: 1024,
         });
-
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = 210;
-        const pdfHeight = 297;
         const pageCanvasHeight = (canvas.width * pdfHeight) / pdfWidth;
 
         let remainingHeight = canvas.height;
