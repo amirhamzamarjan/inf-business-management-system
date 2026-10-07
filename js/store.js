@@ -279,12 +279,43 @@ const Store = (() => {
     try { localStorage.setItem(LOCAL_COMPANY_PADS_KEY, JSON.stringify(list)); } catch (_) {}
   }
 
+  async function syncLocalCompanyPads() {
+    const list = getLocalCompanyPads();
+    const unsynced = list.filter(p => !p.id || String(p.id).startsWith('local-pad-'));
+    if (!unsynced.length) return;
+
+    for (const pad of unsynced) {
+      try {
+        const uploaded = await SupabaseService.saveCompanyPad(pad);
+        if (uploaded && uploaded.id) {
+          const currentList = getLocalCompanyPads();
+          const idx = currentList.findIndex(p => p.id === pad.id || p.pad_number === pad.pad_number);
+          if (idx >= 0) {
+            currentList[idx] = uploaded;
+          } else {
+            currentList.unshift(uploaded);
+          }
+          saveLocalCompanyPads(currentList);
+        }
+      } catch (err) {
+        console.warn('Could not sync local pad to Supabase:', pad.pad_number, err);
+      }
+    }
+  }
+
   async function getCompanyPads(filters = {}) {
+    let fromDb = null;
     try {
-      const fromDb = await SupabaseService.getCompanyPads(filters);
-      if (fromDb && fromDb.length) return fromDb;
+      fromDb = await SupabaseService.getCompanyPads(filters);
     } catch (_) {}
-    // Fallback to local storage if DB table not yet created
+
+    // When Supabase successfully returns an array, sync local pads in background and return cloud records
+    if (fromDb !== null && Array.isArray(fromDb)) {
+      syncLocalCompanyPads().catch(() => {});
+      return fromDb;
+    }
+
+    // Fallback to local storage only if DB table not yet created or connection offline
     let list = getLocalCompanyPads();
     if (filters.status && filters.status !== 'All') {
       list = list.filter(p => p.status === filters.status);
@@ -323,6 +354,15 @@ const Store = (() => {
     let saved = null;
     try {
       saved = await SupabaseService.saveCompanyPad(padData);
+      // Clean up local storage cache to match cloud
+      const list = getLocalCompanyPads();
+      const existingIdx = list.findIndex(p => p.id === padData.id || p.pad_number === saved.pad_number);
+      if (existingIdx >= 0) {
+        list[existingIdx] = saved;
+      } else {
+        list.unshift(saved);
+      }
+      saveLocalCompanyPads(list);
     } catch (err) {
       console.warn('Supabase save company pad failed, saving locally:', err);
       const list = getLocalCompanyPads();
@@ -330,10 +370,11 @@ const Store = (() => {
       const profile = await SupabaseService.getCurrentProfile();
       saved = {
         ...padData,
-        id: padData.id || `local-pad-${Date.now()}`,
+        id: (padData.id && String(padData.id).startsWith('local-pad-')) ? padData.id : `local-pad-${Date.now()}`,
         prepared_by_name: padData.prepared_by_name || (profile ? profile.full_name : 'Staff'),
         created_at: padData.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        is_local_only: true,
       };
       if (existingIdx >= 0) {
         list[existingIdx] = saved;
@@ -511,6 +552,7 @@ const Store = (() => {
     generatePadNumber,
     saveCompanyPad,
     deleteCompanyPad,
+    syncLocalCompanyPads,
     // Receipts
     getReceipts,
     getReceipt,

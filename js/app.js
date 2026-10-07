@@ -1580,15 +1580,18 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
 
       const pdfBtn = document.getElementById('padSaveDownloadPDFBtn');
       if (pdfBtn) pdfBtn.addEventListener('click', async () => {
-        const saved = await savePad(false);
+        const saved = await savePad(true);
         if (saved) await downloadPDF(saved.id);
       });
 
       const printBtn = document.getElementById('padSavePrintBtn');
       if (printBtn) printBtn.addEventListener('click', async () => {
-        const saved = await savePad(false);
+        const saved = await savePad(true);
         if (saved) await printPad(saved.id);
       });
+
+      // Automatically sync any local pads to Cloud on module load
+      Store.syncLocalCompanyPads().then(() => renderHistory()).catch(() => {});
 
       // Template Selection
       const templateSelect = document.getElementById('padTemplateSelect');
@@ -1752,7 +1755,11 @@ Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</
 
         Store.clearCompanyPadDraft();
         if (showFeedback) {
-          Utils.notify(`Company Pad ${saved.pad_number} saved successfully`, 'success');
+          if (saved.is_local_only) {
+            Utils.notify(`Company Pad ${saved.pad_number} saved on this device (offline)`, 'warning');
+          } else {
+            Utils.notify(`Company Pad ${saved.pad_number} saved to Cloud Database`, 'success');
+          }
         }
         renderHistory();
         return saved;

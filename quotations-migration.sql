@@ -79,13 +79,14 @@ FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 CREATE OR REPLACE FUNCTION public.get_next_quotation_number()
 RETURNS TEXT AS $$
 DECLARE
+  v_settings_id UUID;
   v_prefix TEXT;
   v_seq INT;
   v_year TEXT;
   v_result TEXT;
 BEGIN
-  SELECT quotation_prefix, quotation_sequence
-  INTO v_prefix, v_seq
+  SELECT id, quotation_prefix, quotation_sequence
+  INTO v_settings_id, v_prefix, v_seq
   FROM public.business_settings
   LIMIT 1
   FOR UPDATE;
@@ -96,8 +97,11 @@ BEGIN
   v_year := to_char(CURRENT_DATE, 'YYYY');
   v_result := v_prefix || '-' || v_year || '-' || lpad(v_seq::text, 6, '0');
 
-  UPDATE public.business_settings
-  SET quotation_sequence = v_seq + 1;
+  IF v_settings_id IS NOT NULL THEN
+    UPDATE public.business_settings
+    SET quotation_sequence = v_seq + 1
+    WHERE id = v_settings_id;
+  END IF;
 
   RETURN v_result;
 END;

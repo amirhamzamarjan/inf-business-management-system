@@ -1018,6 +1018,10 @@ const SupabaseService = (() => {
      6.5 COMPANY PADS SERVICES (Official Corporate Letterheads)
      ------------------------------------------------------------------ */
 
+  function isUUID(str) {
+    return typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  }
+
   async function getNextPadNumber() {
     const sb = getClient();
     const year = new Date().getFullYear();
@@ -1037,12 +1041,18 @@ const SupabaseService = (() => {
         .from('company_pads')
         .select('pad_number')
         .order('created_at', { ascending: false })
-        .limit(1);
+        .limit(25);
 
       if (data && data.length > 0) {
-        const lastNum = data[0].pad_number;
-        const match = lastNum.match(/(\d+)$/);
-        const next = match ? parseInt(match[1], 10) + 1 : 1;
+        let maxSeq = 0;
+        data.forEach(item => {
+          const match = (item.pad_number || '').match(/(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxSeq) maxSeq = num;
+          }
+        });
+        const next = maxSeq + 1;
         return `${prefix}-${year}-${String(next).padStart(6, '0')}`;
       }
       return `${prefix}-${year}-000001`;
@@ -1086,7 +1096,7 @@ const SupabaseService = (() => {
 
   async function getCompanyPad(id) {
     const sb = getClient();
-    if (!sb || !id) return null;
+    if (!sb || !id || !isUUID(id)) return null;
 
     try {
       const { data, error } = await sb
@@ -1108,10 +1118,16 @@ const SupabaseService = (() => {
 
     const profile = await getCurrentProfile();
     const preparedByName = profile ? profile.full_name : 'Staff';
-    const preparedById = profile ? profile.id : null;
+    const rawPreparedById = padData.prepared_by_id || (profile ? profile.id : null);
+    const preparedById = isUUID(rawPreparedById) ? rawPreparedById : null;
+
+    let padNumber = (padData.pad_number || '').trim();
+    if (!padNumber) {
+      padNumber = await getNextPadNumber();
+    }
 
     const payload = {
-      pad_number: padData.pad_number,
+      pad_number: padNumber,
       date: padData.date || new Date().toISOString().split('T')[0],
       topic: (padData.topic || '').trim(),
       content: padData.content || '',
@@ -1123,12 +1139,14 @@ const SupabaseService = (() => {
       signatory_title: (padData.signatory_title || '').trim() || null,
       include_sign_block: padData.include_sign_block !== false,
       prepared_by_name: padData.prepared_by_name || preparedByName,
-      prepared_by_id: padData.prepared_by_id || preparedById,
+      prepared_by_id: preparedById,
       updated_at: new Date().toISOString(),
     };
 
     let saveRes;
-    if (padData.id) {
+    const isExistingDBPad = padData.id && isUUID(padData.id);
+
+    if (isExistingDBPad) {
       saveRes = await sb
         .from('company_pads')
         .update(payload)
@@ -1141,19 +1159,41 @@ const SupabaseService = (() => {
         .insert([payload])
         .select()
         .single();
+
+      // If duplicate pad_number collision occurs, generate fresh sequential number and retry
+      if (saveRes.error && (saveRes.error.code === '23505' || saveRes.error.message?.includes('pad_number'))) {
+        payload.pad_number = await getNextPadNumber();
+        saveRes = await sb
+          .from('company_pads')
+          .insert([payload])
+          .select()
+          .single();
+      }
+
+      // If foreign key constraint failed on prepared_by_id, retry cleanly with null
+      if (saveRes.error && saveRes.error.message?.includes('prepared_by_id')) {
+        payload.prepared_by_id = null;
+        saveRes = await sb
+          .from('company_pads')
+          .insert([payload])
+          .select()
+          .single();
+      }
     }
 
     if (saveRes.error) throw saveRes.error;
     const saved = saveRes.data;
 
-    // Log Activity
-    await logActivity({
-      type: 'company_pad',
-      message: `Company Pad ${saved.pad_number} ("${saved.topic}") created`,
-      amount: 0,
-      entity_type: 'company_pad',
-      entity_id: saved.id,
-    });
+    // Log Activity safely
+    try {
+      await logActivity({
+        type: 'company_pad',
+        message: `Company Pad ${saved.pad_number} ("${saved.topic}") saved`,
+        amount: 0,
+        entity_type: 'company_pad',
+        entity_id: saved.id,
+      });
+    } catch (_) {}
 
     return saved;
   }
