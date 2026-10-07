@@ -327,9 +327,11 @@ const SupabaseService = (() => {
     invoice_prefix: 'INV',
     receipt_prefix: 'INF',
     quotation_prefix: 'QT',
+    pad_prefix: 'PAD',
     invoice_sequence: 1,
     receipt_sequence: 1,
     quotation_sequence: 1,
+    pad_sequence: 1,
     terms: [
       'Payment is due upon receipt of invoice.',
       'Warranty applies only to specified parts and equipment.',
@@ -1013,6 +1015,163 @@ const SupabaseService = (() => {
   }
 
   /* ------------------------------------------------------------------
+     6.5 COMPANY PADS SERVICES (Official Corporate Letterheads)
+     ------------------------------------------------------------------ */
+
+  async function getNextPadNumber() {
+    const sb = getClient();
+    const year = new Date().getFullYear();
+    const prefix = 'PAD';
+
+    if (!sb) {
+      return `${prefix}-${year}-000001`;
+    }
+
+    try {
+      const { data, error } = await sb.rpc('get_next_pad_number');
+      if (!error && data) return data;
+    } catch (_) {}
+
+    try {
+      const { data } = await sb
+        .from('company_pads')
+        .select('pad_number')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const lastNum = data[0].pad_number;
+        const match = lastNum.match(/(\d+)$/);
+        const next = match ? parseInt(match[1], 10) + 1 : 1;
+        return `${prefix}-${year}-${String(next).padStart(6, '0')}`;
+      }
+      return `${prefix}-${year}-000001`;
+    } catch (_) {
+      return `${prefix}-${year}-000001`;
+    }
+  }
+
+  async function getCompanyPads(filters = {}) {
+    const sb = getClient();
+    if (!sb) return [];
+
+    try {
+      let query = sb
+        .from('company_pads')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (filters.status && filters.status !== 'All') {
+        query = query.eq('status', filters.status);
+      }
+      if (filters.search) {
+        const s = filters.search.trim();
+        query = query.or(`pad_number.ilike.%${s}%,topic.ilike.%${s}%,recipient_name.ilike.%${s}%,reference_no.ilike.%${s}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('does not exist')) {
+          return [];
+        }
+        throw error;
+      }
+      return data || [];
+    } catch (err) {
+      console.warn('Could not fetch company pads from Supabase:', err);
+      return [];
+    }
+  }
+
+  async function getCompanyPad(id) {
+    const sb = getClient();
+    if (!sb || !id) return null;
+
+    try {
+      const { data, error } = await sb
+        .from('company_pads')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) return null;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function saveCompanyPad(padData) {
+    const sb = getClient();
+    if (!sb) throw new Error('Supabase client is not initialized');
+
+    const profile = await getCurrentProfile();
+    const preparedByName = profile ? profile.full_name : 'Staff';
+    const preparedById = profile ? profile.id : null;
+
+    const payload = {
+      pad_number: padData.pad_number,
+      date: padData.date || new Date().toISOString().split('T')[0],
+      topic: (padData.topic || '').trim(),
+      content: padData.content || '',
+      reference_no: (padData.reference_no || '').trim() || null,
+      recipient_name: (padData.recipient_name || '').trim() || null,
+      recipient_address: (padData.recipient_address || '').trim() || null,
+      status: padData.status || 'Draft',
+      signatory_name: (padData.signatory_name || '').trim() || null,
+      signatory_title: (padData.signatory_title || '').trim() || null,
+      include_sign_block: padData.include_sign_block !== false,
+      prepared_by_name: padData.prepared_by_name || preparedByName,
+      prepared_by_id: padData.prepared_by_id || preparedById,
+      updated_at: new Date().toISOString(),
+    };
+
+    let saveRes;
+    if (padData.id) {
+      saveRes = await sb
+        .from('company_pads')
+        .update(payload)
+        .eq('id', padData.id)
+        .select()
+        .single();
+    } else {
+      saveRes = await sb
+        .from('company_pads')
+        .insert([payload])
+        .select()
+        .single();
+    }
+
+    if (saveRes.error) throw saveRes.error;
+    const saved = saveRes.data;
+
+    // Log Activity
+    await logActivity({
+      type: 'company_pad',
+      message: `Company Pad ${saved.pad_number} ("${saved.topic}") created`,
+      amount: 0,
+      entity_type: 'company_pad',
+      entity_id: saved.id,
+    });
+
+    return saved;
+  }
+
+  async function deleteCompanyPad(id) {
+    const sb = getClient();
+    if (!sb) throw new Error('Supabase client is not initialized');
+
+    const { error } = await sb
+      .from('company_pads')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+
+  /* ------------------------------------------------------------------
      7. MONEY RECEIPTS SERVICES
      ------------------------------------------------------------------ */
 
@@ -1240,17 +1399,20 @@ const SupabaseService = (() => {
     const q = (query || '').trim().toLowerCase();
     if (!q) return [];
 
-    const [invoices, receipts, customers, quotations] = await Promise.all([
+    const results = [];
+    const [invoices, receipts, customers, quotations, pads] = await Promise.all([
       getInvoices({ search: q }),
       getReceipts({ search: q }),
       getCustomers(q),
       getQuotations({ search: q }),
+      getCompanyPads({ search: q }),
     ]);
 
     invoices.forEach(inv => results.push({ type: 'invoice', data: inv }));
     receipts.forEach(r => results.push({ type: 'receipt', data: r }));
     customers.forEach(c => results.push({ type: 'customer', data: c }));
     quotations.forEach(qItem => results.push({ type: 'quotation', data: qItem }));
+    (pads || []).forEach(p => results.push({ type: 'company_pad', data: p }));
 
     return results;
   }
@@ -1296,6 +1458,12 @@ const SupabaseService = (() => {
     saveQuotation,
     deleteQuotation,
     convertQuotationToInvoice,
+    // Company Pads
+    getNextPadNumber,
+    getCompanyPads,
+    getCompanyPad,
+    saveCompanyPad,
+    deleteCompanyPad,
     // Receipts
     getNextReceiptNumber,
     getReceipts,

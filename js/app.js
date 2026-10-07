@@ -274,6 +274,7 @@
       dashboard: { title: 'Dashboard', subtitle: "Welcome back. Here's your business overview." },
       invoices: { title: 'Invoices', subtitle: 'Create fast invoices and manage billing records.' },
       quotations: { title: 'Quotations', subtitle: 'Create quotation proposals, download A4 proposals, and convert to invoices.' },
+      'company-pad': { title: 'Company Pad', subtitle: 'Create official executive letterheads and branded business documentation.' },
       receipt: { title: 'Money Receipt Generator', subtitle: 'Generate and manage customer service receipts.' },
       customers: { title: 'Customer Management', subtitle: 'View client database and transaction history.' },
       analytics: { title: 'Analytics & Insights', subtitle: 'Revenue metrics, service trends, and performance.' },
@@ -354,6 +355,7 @@
       if (currentPage === 'dashboard') DashboardModule.render();
       if (currentPage === 'invoices') InvoiceModule.render();
       if (currentPage === 'quotations') QuotationModule.render();
+      if (currentPage === 'company-pad') CompanyPadModule.render();
       if (currentPage === 'receipt') ReceiptModule.render();
       if (currentPage === 'customers') CustomersModule.render();
       if (currentPage === 'analytics') AnalyticsModule.render();
@@ -1468,6 +1470,644 @@
   })();
 
   /* ==================================================================
+     3.5 COMPANY PAD GENERATOR & MANAGEMENT MODULE
+     ================================================================== */
+  const CompanyPadModule = (() => {
+    let activeFilter = 'All';
+    let searchQuery = '';
+    let editingPadId = null;
+
+    const STARTER_TEMPLATES = {
+      proposal: `<h2>1. Executive Summary</h2>
+<p>INFORMIX BD is pleased to submit this comprehensive technical and commercial proposal for the execution of your upcoming security and technology infrastructure project. Our team brings years of proven expertise in modern surveillance, access control, and enterprise networking.</p>
+
+<h2>2. Proposed Scope of Work</h2>
+<p>The scope of this engagement encompasses system architecture planning, hardware supply, precision cabling, deployment, calibration, and full commissioning:</p>
+<ul>
+  <li>Turnkey installation of high-definition surveillance units with infrared night vision.</li>
+  <li>Setup of centralized network video recording infrastructure with enterprise-grade storage redundancy.</li>
+  <li>Structured Gigabit Ethernet routing with high-grade shielded cabling and industrial surge protection.</li>
+  <li>Remote live surveillance access configuration for designated administrative workstations and mobile devices.</li>
+</ul>
+
+<h2>3. Project Timeline & Handover Milestones</h2>
+<p>Phase 1 (Site Survey & Physical Cabling): <strong>3 Business Days</strong><br>
+Phase 2 (Hardware Mounting & Network Termination): <strong>2 Business Days</strong><br>
+Phase 3 (Testing, Client Training & Official Handover): <strong>1 Business Day</strong></p>
+
+<h2>4. Warranty & Support SLA</h2>
+<p>All supplied equipment is backed by comprehensive 1-year manufacturer warranty. INFORMIX BD guarantees 24-hour response time for technical support and maintenance calls during the warranty term.</p>`,
+
+      notice: `<h2>OFFICIAL NOTICE / CIRCULAR</h2>
+<p>This is to formally notify all valued clients, partners, and stakeholders regarding the scheduled system maintenance, software firmware upgrade, and network infrastructure enhancement.</p>
+
+<h2>1. Scheduled Maintenance Window</h2>
+<p>The planned technical maintenance will be carried out as per the schedule below:</p>
+<ul>
+  <li><strong>Date of Activity:</strong> Friday, Next Weekend</li>
+  <li><strong>Time Window:</strong> 01:00 AM – 06:00 AM (BST)</li>
+  <li><strong>Expected Impact:</strong> Intermittent access during cloud backup synchronization.</li>
+</ul>
+
+<h2>2. Advisory for System Administrators</h2>
+<p>Client administrators are kindly requested to ensure all on-premises server equipment remains connected to uninterrupted power supply (UPS) during the update sequence.</p>
+
+<p>For urgent operational inquiries during the maintenance window, please reach our technical operations desk directly.</p>`,
+
+      letter: `<p>Dear Valued Client,</p>
+
+<p>We are writing to express our sincere appreciation for choosing INFORMIX BD as your trusted partner for security, surveillance, and IT infrastructure solutions.</p>
+
+<p>Following our recent technical review and consultation, we would like to confirm the implementation framework agreed upon for your premises. Our engineering division has finalized the design blueprints to ensure maximum perimeter coverage, zero dead-zones, and seamless compliance with statutory safety regulations.</p>
+
+<p>Should you require any custom adjustments to the deployment schedule or specifications, please do not hesitate to reach our project management team.</p>
+
+<p>We look forward to an enduring and mutually rewarding partnership.</p>`,
+
+      handover: `<h2>WORK CONFIRMATION & PROJECT HANDOVER STATEMENT</h2>
+<p>This official certificate confirms that the installation, configuration, and testing work specified under the agreed contract has been executed in full compliance with industry standards and client requirements.</p>
+
+<h2>1. Work Verification Checklist</h2>
+<ul>
+  <li>Physical equipment mounting and secure hardware housing: <strong>COMPLETED & VERIFIED</strong></li>
+  <li>Structured networking, termination, and patch panel labeling: <strong>COMPLETED & VERIFIED</strong></li>
+  <li>Continuous recording tests and camera angle optimization: <strong>COMPLETED & VERIFIED</strong></li>
+  <li>Administrative user access credentials and remote viewing setup: <strong>COMPLETED & VERIFIED</strong></li>
+</ul>
+
+<h2>2. Handover Acceptance</h2>
+<p>The client technical representative has inspected the operational status of all installed devices and confirmed satisfactory performance with zero pending defects.</p>`,
+
+      service: `<h2>SERVICE SPECIFICATION & MAINTENANCE STATEMENT</h2>
+<p>This document details the preventive maintenance, diagnostic checks, and technical servicing performed by the certified engineering division of INFORMIX BD.</p>
+
+<h2>1. Diagnostic Summary</h2>
+<ul>
+  <li>Power supply voltage regulation and UPS battery health check: Normal.</li>
+  <li>Firmware stability, camera lens focus, and optical sensor calibration: Certified.</li>
+  <li>Hard drive S.M.A.R.T health and archival storage integrity check: 100% Operational.</li>
+</ul>
+
+<h2>2. Recommended Actions</h2>
+<p>To preserve optimum performance and longevity of surveillance electronics, next quarterly preventive maintenance is recommended in 90 days.</p>`,
+    };
+
+    function init() {
+      // Subnav Tabs
+      const tabCreator = document.getElementById('tabPadCreator');
+      const tabHistory = document.getElementById('tabPadHistory');
+      if (tabCreator) tabCreator.addEventListener('click', () => switchTab('pad-generator'));
+      if (tabHistory) tabHistory.addEventListener('click', () => switchTab('pad-history'));
+
+      // Form Submit
+      const form = document.getElementById('companyPadForm');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          await savePad();
+        });
+      }
+
+      // Action Buttons
+      const resetBtn = document.getElementById('padResetBtn');
+      if (resetBtn) resetBtn.addEventListener('click', () => resetForm());
+
+      const draftBtn = document.getElementById('padSaveDraftBtn');
+      if (draftBtn) draftBtn.addEventListener('click', () => saveDraft());
+
+      const previewBtn = document.getElementById('padPreviewBtn');
+      if (previewBtn) previewBtn.addEventListener('click', () => showLivePreview());
+
+      const pdfBtn = document.getElementById('padSaveDownloadPDFBtn');
+      if (pdfBtn) pdfBtn.addEventListener('click', async () => {
+        const saved = await savePad(false);
+        if (saved) await downloadPDF(saved.id);
+      });
+
+      const printBtn = document.getElementById('padSavePrintBtn');
+      if (printBtn) printBtn.addEventListener('click', async () => {
+        const saved = await savePad(false);
+        if (saved) await printPad(saved.id);
+      });
+
+      // Template Selection
+      const templateSelect = document.getElementById('padTemplateSelect');
+      const editor = document.getElementById('padContentEditor');
+      if (templateSelect && editor) {
+        templateSelect.addEventListener('change', (e) => {
+          const val = e.target.value;
+          if (val === 'clear') {
+            editor.innerHTML = '';
+          } else if (STARTER_TEMPLATES[val]) {
+            editor.innerHTML = STARTER_TEMPLATES[val];
+          }
+          templateSelect.value = '';
+          syncEditorContent();
+        });
+      }
+
+      // Rich Text Toolbar Buttons
+      const toolbar = document.getElementById('padEditorToolbar');
+      if (toolbar && editor) {
+        toolbar.querySelectorAll('.pad-tb-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const cmd = btn.dataset.command;
+            const val = btn.dataset.value || null;
+            if (cmd) {
+              editor.focus();
+              document.execCommand(cmd, false, val);
+              syncEditorContent();
+            }
+          });
+        });
+      }
+
+      // Sync and Draft Auto-save
+      if (editor) {
+        editor.addEventListener('input', Utils.debounce(() => {
+          syncEditorContent();
+          autoSaveDraft();
+        }, 300));
+      }
+
+      const topicInput = document.getElementById('padTopic');
+      if (topicInput) {
+        topicInput.addEventListener('input', Utils.debounce(() => autoSaveDraft(), 500));
+      }
+
+      // Filter Pills
+      const pills = document.getElementById('padStatusPills');
+      if (pills) {
+        pills.querySelectorAll('.filter-pill').forEach(btn => {
+          btn.addEventListener('click', () => {
+            pills.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeFilter = btn.dataset.status;
+            renderHistory();
+          });
+        });
+      }
+
+      // Search Input
+      const searchInput = document.getElementById('padHistSearchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', Utils.debounce((e) => {
+          searchQuery = e.target.value.trim();
+          renderHistory();
+        }, 250));
+      }
+
+      // Export CSV
+      const csvBtn = document.getElementById('exportPadsCSVBtn');
+      if (csvBtn) csvBtn.addEventListener('click', exportCSV);
+
+      // Event Bus Listener
+      Store.on('company_pads:updated', () => renderHistory());
+    }
+
+    function switchTab(tabName) {
+      const tabGen = document.getElementById('tabPadCreator');
+      const tabHist = document.getElementById('tabPadHistory');
+      const contentGen = document.getElementById('tabContentPadCreator');
+      const contentHist = document.getElementById('tabContentPadHistory');
+
+      if (!tabGen || !tabHist || !contentGen || !contentHist) return;
+
+      if (tabName === 'pad-generator') {
+        tabGen.classList.add('active');
+        tabHist.classList.remove('active');
+        contentGen.classList.add('active');
+        contentHist.classList.remove('active');
+      } else {
+        tabGen.classList.remove('active');
+        tabHist.classList.add('active');
+        contentGen.classList.remove('active');
+        contentHist.classList.add('active');
+        renderHistory();
+      }
+    }
+
+    function syncEditorContent() {
+      const editor = document.getElementById('padContentEditor');
+      const hidden = document.getElementById('padContent');
+      if (editor && hidden) {
+        hidden.value = editor.innerHTML.trim();
+      }
+    }
+
+    function getFormData() {
+      syncEditorContent();
+      const editor = document.getElementById('padContentEditor');
+      const contentHtml = editor ? editor.innerHTML.trim() : (document.getElementById('padContent')?.value || '');
+      const profile = currentProfile;
+
+      return {
+        id: editingPadId || document.getElementById('padId')?.value || null,
+        pad_number: document.getElementById('padNumber')?.value || 'PAD-2026-000001',
+        date: document.getElementById('padDate')?.value || new Date().toISOString().split('T')[0],
+        reference_no: document.getElementById('padRefNo')?.value?.trim() || null,
+        status: document.getElementById('padStatus')?.value || 'Draft',
+        recipient_name: document.getElementById('padRecipientName')?.value?.trim() || null,
+        recipient_address: document.getElementById('padRecipientAddress')?.value?.trim() || null,
+        topic: document.getElementById('padTopic')?.value?.trim() || '',
+        content: contentHtml,
+        signatory_name: document.getElementById('padSignatoryName')?.value?.trim() || (profile ? profile.full_name : 'Authorized Signatory'),
+        signatory_title: document.getElementById('padSignatoryTitle')?.value?.trim() || 'Authorized Signatory / Management',
+        include_sign_block: document.getElementById('padIncludeSignBlock')?.checked !== false,
+        prepared_by_name: profile ? profile.full_name : 'Staff',
+        prepared_by_id: profile ? profile.id : null,
+      };
+    }
+
+    async function savePad(showFeedback = true) {
+      const data = getFormData();
+      if (!data.topic) {
+        Utils.notify('Please enter a Document Topic / Project Name', 'warning');
+        const topicInput = document.getElementById('padTopic');
+        if (topicInput) topicInput.focus();
+        return null;
+      }
+
+      if (!data.content || data.content === '<br>' || data.content === '<p></p>') {
+        Utils.notify('Please write some content or select a starter template', 'warning');
+        const editor = document.getElementById('padContentEditor');
+        if (editor) editor.focus();
+        return null;
+      }
+
+      try {
+        const saved = await Store.saveCompanyPad(data);
+        editingPadId = saved.id;
+        const padIdEl = document.getElementById('padId');
+        if (padIdEl) padIdEl.value = saved.id;
+        const padNumberEl = document.getElementById('padNumber');
+        if (padNumberEl) padNumberEl.value = saved.pad_number;
+
+        const statusBadge = document.getElementById('padStatusBadge');
+        if (statusBadge) {
+          statusBadge.textContent = saved.status || 'Draft';
+          statusBadge.style.display = 'inline-block';
+        }
+
+        Store.clearCompanyPadDraft();
+        if (showFeedback) {
+          Utils.notify(`Company Pad ${saved.pad_number} saved successfully`, 'success');
+        }
+        renderHistory();
+        return saved;
+      } catch (err) {
+        console.error('Error saving company pad:', err);
+        Utils.notify('Failed to save Company Pad', 'error');
+        return null;
+      }
+    }
+
+    function saveDraft() {
+      const data = getFormData();
+      Store.saveCompanyPadDraft(data);
+      const indicator = document.getElementById('padDraftIndicator');
+      if (indicator) {
+        indicator.textContent = 'Draft saved';
+        indicator.style.display = 'inline-block';
+        setTimeout(() => { indicator.style.display = 'none'; }, 2500);
+      }
+      Utils.notify('Company Pad draft saved locally', 'info');
+    }
+
+    function autoSaveDraft() {
+      if (editingPadId) return; // Don't overwrite draft while editing saved record
+      const data = getFormData();
+      if (data.topic || (data.content && data.content.length > 20)) {
+        Store.saveCompanyPadDraft(data);
+        const indicator = document.getElementById('padDraftIndicator');
+        if (indicator) {
+          indicator.textContent = 'Draft autosaved';
+          indicator.style.display = 'inline-block';
+          setTimeout(() => { indicator.style.display = 'none'; }, 2000);
+        }
+      }
+    }
+
+    function loadDraft() {
+      if (editingPadId) return;
+      const draft = Store.getCompanyPadDraft();
+      if (!draft) return;
+
+      if (draft.date) {
+        const dateInput = document.getElementById('padDate');
+        if (dateInput) dateInput.value = draft.date;
+      }
+      if (draft.reference_no) {
+        const refInput = document.getElementById('padRefNo');
+        if (refInput) refInput.value = draft.reference_no;
+      }
+      if (draft.status) {
+        const statusInput = document.getElementById('padStatus');
+        if (statusInput) statusInput.value = draft.status;
+      }
+      if (draft.recipient_name) {
+        const rName = document.getElementById('padRecipientName');
+        if (rName) rName.value = draft.recipient_name;
+      }
+      if (draft.recipient_address) {
+        const rAddr = document.getElementById('padRecipientAddress');
+        if (rAddr) rAddr.value = draft.recipient_address;
+      }
+      if (draft.topic) {
+        const topicInput = document.getElementById('padTopic');
+        if (topicInput) topicInput.value = draft.topic;
+      }
+      if (draft.content) {
+        const editor = document.getElementById('padContentEditor');
+        if (editor) editor.innerHTML = draft.content;
+        const hidden = document.getElementById('padContent');
+        if (hidden) hidden.value = draft.content;
+      }
+      if (draft.signatory_name) {
+        const sName = document.getElementById('padSignatoryName');
+        if (sName) sName.value = draft.signatory_name;
+      }
+      if (draft.signatory_title) {
+        const sTitle = document.getElementById('padSignatoryTitle');
+        if (sTitle) sTitle.value = draft.signatory_title;
+      }
+      if (draft.include_sign_block !== undefined) {
+        const sBox = document.getElementById('padIncludeSignBlock');
+        if (sBox) sBox.checked = draft.include_sign_block;
+      }
+
+      const indicator = document.getElementById('padDraftIndicator');
+      if (indicator) {
+        indicator.textContent = 'Draft restored';
+        indicator.style.display = 'inline-block';
+        setTimeout(() => { indicator.style.display = 'none'; }, 3000);
+      }
+    }
+
+    async function resetForm() {
+      editingPadId = null;
+      const form = document.getElementById('companyPadForm');
+      if (form) form.reset();
+
+      const padId = document.getElementById('padId');
+      if (padId) padId.value = '';
+
+      const formTitle = document.getElementById('padFormTitle');
+      if (formTitle) formTitle.textContent = 'New Company Pad';
+
+      const statusBadge = document.getElementById('padStatusBadge');
+      if (statusBadge) statusBadge.style.display = 'none';
+
+      const dateInput = document.getElementById('padDate');
+      if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+
+      const editor = document.getElementById('padContentEditor');
+      if (editor) editor.innerHTML = '';
+      const hidden = document.getElementById('padContent');
+      if (hidden) hidden.value = '';
+
+      const numInput = document.getElementById('padNumber');
+      if (numInput) numInput.value = await Store.generatePadNumber();
+
+      const signName = document.getElementById('padSignatoryName');
+      if (signName && currentProfile) signName.value = currentProfile.full_name;
+
+      const signCheck = document.getElementById('padIncludeSignBlock');
+      if (signCheck) signCheck.checked = true;
+
+      Store.clearCompanyPadDraft();
+      Utils.notify('Form reset', 'info');
+    }
+
+    async function editPad(id) {
+      const pad = await Store.getCompanyPad(id);
+      if (!pad) {
+        Utils.notify('Company Pad not found', 'error');
+        return;
+      }
+
+      editingPadId = pad.id;
+      const padIdEl = document.getElementById('padId');
+      if (padIdEl) padIdEl.value = pad.id;
+
+      const formTitle = document.getElementById('padFormTitle');
+      if (formTitle) formTitle.textContent = `Edit Pad: ${pad.pad_number}`;
+
+      const statusBadge = document.getElementById('padStatusBadge');
+      if (statusBadge) {
+        statusBadge.textContent = pad.status || 'Draft';
+        statusBadge.style.display = 'inline-block';
+      }
+
+      const numInput = document.getElementById('padNumber');
+      if (numInput) numInput.value = pad.pad_number || '';
+
+      const dateInput = document.getElementById('padDate');
+      if (dateInput) dateInput.value = pad.date ? new Date(pad.date).toISOString().split('T')[0] : '';
+
+      const refInput = document.getElementById('padRefNo');
+      if (refInput) refInput.value = pad.reference_no || '';
+
+      const statusInput = document.getElementById('padStatus');
+      if (statusInput) statusInput.value = pad.status || 'Draft';
+
+      const rName = document.getElementById('padRecipientName');
+      if (rName) rName.value = pad.recipient_name || '';
+
+      const rAddr = document.getElementById('padRecipientAddress');
+      if (rAddr) rAddr.value = pad.recipient_address || '';
+
+      const topicInput = document.getElementById('padTopic');
+      if (topicInput) topicInput.value = pad.topic || '';
+
+      const editor = document.getElementById('padContentEditor');
+      if (editor) editor.innerHTML = pad.content || '';
+
+      const hidden = document.getElementById('padContent');
+      if (hidden) hidden.value = pad.content || '';
+
+      const sName = document.getElementById('padSignatoryName');
+      if (sName) sName.value = pad.signatory_name || '';
+
+      const sTitle = document.getElementById('padSignatoryTitle');
+      if (sTitle) sTitle.value = pad.signatory_title || '';
+
+      const sCheck = document.getElementById('padIncludeSignBlock');
+      if (sCheck) sCheck.checked = pad.include_sign_block !== false;
+
+      switchTab('pad-generator');
+      Utils.notify(`Loaded pad ${pad.pad_number} for editing`, 'info');
+    }
+
+    async function deletePad(id) {
+      const pad = await Store.getCompanyPad(id);
+      if (!pad) return;
+
+      const confirmed = await Utils.confirmDialog({
+        title: 'Delete Company Pad',
+        message: `Are you sure you want to permanently delete Company Pad "${pad.pad_number}" (${pad.topic})?`,
+        confirmText: 'Delete Pad',
+        danger: true,
+      });
+
+      if (!confirmed) return;
+
+      try {
+        await Store.deleteCompanyPad(id);
+        if (editingPadId === id) {
+          resetForm();
+        }
+        Utils.notify(`Company Pad ${pad.pad_number} deleted`, 'success');
+        renderHistory();
+      } catch (err) {
+        console.error('Error deleting company pad:', err);
+        Utils.notify('Failed to delete Company Pad', 'error');
+      }
+    }
+
+    async function showLivePreview() {
+      const data = getFormData();
+      const settings = await Store.getSettings();
+      const modal = document.getElementById('companyPadModal');
+      const content = document.getElementById('companyPadPreviewContent');
+
+      if (modal && content) {
+        content.innerHTML = MinimalLuxuryRenderer.buildCompanyPadHTML(data, settings, false);
+        modal.dataset.padId = editingPadId || '';
+        modal.style.display = 'flex';
+      }
+    }
+
+    async function printPad(id) {
+      const pad = id ? await Store.getCompanyPad(id) : getFormData();
+      const settings = await Store.getSettings();
+      if (!pad) return;
+
+      const printArea = document.getElementById('printArea');
+      if (printArea) {
+        printArea.innerHTML = MinimalLuxuryRenderer.buildCompanyPadHTML(pad, settings, true);
+        setTimeout(() => {
+          window.print();
+          setTimeout(() => { printArea.innerHTML = ''; }, 1000);
+        }, 250);
+      }
+    }
+
+    async function downloadPDF(id) {
+      const pad = id ? await Store.getCompanyPad(id) : getFormData();
+      const settings = await Store.getSettings();
+      if (!pad) return;
+
+      const html = MinimalLuxuryRenderer.buildCompanyPadHTML(pad, settings, false);
+      const safeTopic = (pad.topic || 'Document').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 24);
+      await downloadDocumentPDF(html, `INFORMIXBD_${pad.pad_number || 'PAD'}_${safeTopic}.pdf`);
+    }
+
+    async function renderHistory() {
+      const tbody = document.getElementById('padsTableBody');
+      const countEl = document.getElementById('padHistoryCount');
+      if (!tbody) return;
+
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">Loading company pads...</td></tr>';
+
+      try {
+        const pads = await Store.getCompanyPads({ status: activeFilter, search: searchQuery });
+        if (countEl) countEl.textContent = pads.length;
+
+        if (!pads || !pads.length) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="8" style="text-align:center;padding:40px 16px;color:var(--text-muted)">
+                <div style="font-size:1.05rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">No Company Pads Found</div>
+                <div style="font-size:0.88rem;margin-bottom:14px">Create official company pads, letters, notices and proposals with INFORMIX BD letterhead branding.</div>
+                <button type="button" class="btn btn--primary btn--sm" onclick="CompanyPadModule.switchTab('pad-generator')">+ Create New Pad</button>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = pads.map(p => `
+          <tr>
+            <td style="font-family:monospace;font-weight:700">${Utils.esc(p.pad_number)}</td>
+            <td>${Utils.formatDate(p.date || p.created_at)}</td>
+            <td style="font-family:monospace;font-size:0.85rem">${Utils.esc(p.reference_no || '—')}</td>
+            <td><strong>${Utils.esc(p.topic)}</strong></td>
+            <td>${Utils.esc(p.recipient_name || '—')}</td>
+            <td><span class="status-badge status-badge--${(p.status || 'draft').toLowerCase().replace(/\s+/g, '-')}">${Utils.esc(p.status || 'Draft')}</span></td>
+            <td>${Utils.esc(p.prepared_by_name || 'Staff')}</td>
+            <td style="text-align:right;white-space:nowrap">
+              <button class="btn btn--ghost btn--xs" onclick="App.previewCompanyPad('${p.id}')" title="Preview Letterhead">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button class="btn btn--ghost btn--xs" onclick="App.downloadCompanyPadPDF('${p.id}')" title="Download A4 PDF">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </button>
+              <button class="btn btn--ghost btn--xs" onclick="App.printCompanyPad('${p.id}')" title="Print Letterhead">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              </button>
+              <button class="btn btn--ghost btn--xs" onclick="App.editCompanyPad('${p.id}')" title="Edit Pad">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="btn btn--ghost btn--xs btn--danger-ghost" onclick="App.deleteCompanyPad('${p.id}')" title="Delete Pad">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Error rendering company pads history:', err);
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--danger)">Error loading company pads.</td></tr>';
+      }
+    }
+
+    async function exportCSV() {
+      const pads = await Store.getCompanyPads();
+      if (!pads || !pads.length) {
+        Utils.notify('No company pads to export', 'warning');
+        return;
+      }
+
+      let csv = 'Pad Number,Date,Reference No,Topic,Recipient,Status,Prepared By,Created At\n';
+      pads.forEach(p => {
+        csv += `"${p.pad_number}","${p.date}","${p.reference_no || ''}","${(p.topic || '').replace(/"/g, '""')}","${(p.recipient_name || '').replace(/"/g, '""')}","${p.status}","${p.prepared_by_name || ''}","${p.created_at}"\n`;
+      });
+      Utils.downloadFile(csv, `informix_company_pads_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+      Utils.notify('Company Pads exported to CSV', 'success');
+    }
+
+    async function render() {
+      const badge = document.getElementById('padPreparedByBadge');
+      if (badge) {
+        badge.textContent = `Prepared by: ${currentProfile ? currentProfile.full_name : 'Staff'}`;
+      }
+      const numInput = document.getElementById('padNumber');
+      if (numInput && (!numInput.value || numInput.value === 'PAD-2026-000001')) {
+        numInput.value = await Store.generatePadNumber();
+      }
+      const dateInput = document.getElementById('padDate');
+      if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+      }
+      loadDraft();
+      renderHistory();
+    }
+
+    return {
+      init,
+      render,
+      switchTab,
+      resetForm,
+      editPad,
+      deletePad,
+      printPad,
+      downloadPDF,
+      getFormData,
+    };
+  })();
+
+  /* ==================================================================
      4. MONEY RECEIPT MODULE
      ================================================================== */
   const ReceiptModule = (() => {
@@ -2380,6 +3020,18 @@
               <div class="search-results__item-detail">${Utils.formatCurrency(q.grand_total)} &middot; ${Utils.formatDate(q.date)} &middot; Valid until: ${q.valid_until ? Utils.formatDate(q.valid_until) : '—'} &middot; Prepared by ${Utils.esc(q.prepared_by_name || 'Staff')}</div>
             </div>
           `;
+        } else if (item.type === 'company_pad') {
+          const pad = item.data;
+          return `
+            <div class="search-results__item" onclick="App.previewCompanyPad('${pad.id}')">
+              <div class="search-results__item-header">
+                <span class="search-results__item-number">${Utils.esc(pad.pad_number)}</span>
+                <span class="status-badge status-badge--${(pad.status || 'draft').toLowerCase().replace(/\s+/g, '-')}">${Utils.esc(pad.status || 'Draft')}</span>
+              </div>
+              <div class="search-results__item-name">${Utils.esc(pad.topic)}</div>
+              <div class="search-results__item-detail">${pad.recipient_name ? Utils.esc(pad.recipient_name) + ' &middot; ' : ''}${Utils.formatDate(pad.date)} &middot; Prepared by ${Utils.esc(pad.prepared_by_name || 'Staff')}</div>
+            </div>
+          `;
         } else if (item.type === 'receipt') {
           const r = item.data;
           return `
@@ -3055,7 +3707,147 @@
       `;
     }
 
-    return { buildInvoiceHTML, buildReceiptHTML, buildQuotationHTML };
+    function buildCompanyPadHTML(pad, settings, isPrint = false) {
+      const logoUrl = settings?.logo_url || 'assets/logo.svg';
+      const companyName = settings?.company_name || 'INFORMIX BD';
+      const address = settings?.address || 'Dhaka, Bangladesh';
+      const phone = settings?.phone || '+880 1XXXXXXXXX';
+      const email = settings?.email || 'info@informixbd.com';
+      const website = settings?.website || 'www.informixbd.com';
+
+      const refNo = pad.reference_no || pad.pad_number || `INF/PAD/${new Date().getFullYear()}`;
+      const date = pad.date || pad.created_at || new Date().toISOString().split('T')[0];
+      const topic = pad.topic || 'Official Communication';
+      const recipient = (pad.recipient_name || '').trim();
+      const recipientAddress = (pad.recipient_address || '').trim();
+      const content = pad.content || '<p>No document content specified.</p>';
+      const signatoryName = pad.signatory_name || pad.prepared_by_name || 'Authorized Signatory';
+      const signatoryTitle = pad.signatory_title || 'Authorized Signatory / Management';
+      const includeSignBlock = pad.include_sign_block !== false;
+
+      return `
+        <div class="luxury-document company-pad-document ${isPrint ? 'print-mode' : ''}">
+          <!-- Official Corporate Letterhead Header -->
+          <div class="cp-header">
+            <div class="cp-header__main">
+              <div class="cp-header__brand">
+                <img src="${logoUrl}" alt="${companyName}" class="cp-header__logo" onerror="this.style.display='none'">
+              </div>
+              <div class="cp-header__contact">
+                <div class="cp-contact-row">
+                  <span class="cp-contact-icon">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  </span>
+                  <span>${Utils.esc(address)}</span>
+                </div>
+                <div class="cp-contact-row">
+                  <span class="cp-contact-icon">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  </span>
+                  <span>${Utils.esc(phone)}</span>
+                  <span class="cp-contact-sep">&bull;</span>
+                  <span class="cp-contact-icon">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  </span>
+                  <span>${Utils.esc(email)}</span>
+                </div>
+                <div class="cp-contact-row">
+                  <span class="cp-contact-icon">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  </span>
+                  <span>${Utils.esc(website)}</span>
+                </div>
+              </div>
+            </div>
+            <!-- Composite Luxury Brand Rule: Black Structure -> Red Brand Accent -> Cyan Micro Accent -->
+            <div class="cp-brand-bar">
+              <div class="cp-bar-black"></div>
+              <div class="cp-bar-red"></div>
+              <div class="cp-bar-cyan"></div>
+            </div>
+          </div>
+
+          <!-- Document Meta Bar (Ref, Doc ID, Date, Status) -->
+          <div class="cp-meta-bar">
+            <div class="cp-meta-left">
+              <div class="cp-ref-line">
+                <span class="cp-meta-label">Ref:</span>
+                <span class="cp-ref-number">${Utils.esc(refNo)}</span>
+              </div>
+              <div class="cp-pad-id-line">
+                <span class="cp-meta-label">Doc ID:</span>
+                <span class="cp-pad-number">${Utils.esc(pad.pad_number || 'PAD-000000')}</span>
+              </div>
+            </div>
+            <div class="cp-meta-right">
+              <div class="cp-date-line">
+                <span class="cp-meta-label">Date:</span>
+                <span class="cp-date-val">${Utils.formatDate(date)}</span>
+              </div>
+              ${pad.status ? `
+                <div class="cp-status-line">
+                  <span class="status-badge status-badge--${(pad.status || 'draft').toLowerCase().replace(/\s+/g, '-')}">${Utils.esc(pad.status)}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Optional Recipient Information Block -->
+          ${recipient ? `
+            <div class="cp-recipient-box">
+              <div class="cp-recipient-label">To / Addressed To:</div>
+              <div class="cp-recipient-name">${Utils.esc(recipient)}</div>
+              ${recipientAddress ? `<div class="cp-recipient-address">${Utils.esc(recipientAddress)}</div>` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Prominent Document Topic / Project Name Title -->
+          <div class="cp-topic-section">
+            <div class="cp-topic-badge">Subject / Topic</div>
+            <h1 class="cp-topic-title">${Utils.esc(topic)}</h1>
+          </div>
+
+          <!-- Document Content Details -->
+          <div class="cp-content-body">
+            ${content}
+          </div>
+
+          <!-- Sign-Off & Official Authorization Block -->
+          ${includeSignBlock ? `
+            <div class="cp-signoff-block">
+              <div class="cp-signoff-wrap">
+                <div class="cp-signoff-closing">Sincerely,</div>
+                <div class="cp-signoff-org">For <strong>${Utils.esc(companyName)}</strong></div>
+                <div class="cp-signoff-seal-space"></div>
+                <div class="cp-signoff-line"></div>
+                <div class="cp-signoff-name">${Utils.esc(signatoryName)}</div>
+                <div class="cp-signoff-title">${Utils.esc(signatoryTitle)}</div>
+                <div class="cp-signoff-dept">Security &amp; Surveillance Solutions</div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Official Corporate Footer -->
+          <div class="cp-footer">
+            <div class="cp-footer-rule">
+              <div class="cp-bar-black"></div>
+              <div class="cp-bar-red"></div>
+              <div class="cp-bar-cyan"></div>
+            </div>
+            <div class="cp-footer-body">
+              <div class="cp-footer-text">
+                <strong>${Utils.esc(companyName)}</strong> &bull; ${Utils.esc(address)} &bull; Phone: ${Utils.esc(phone)} &bull; Email: ${Utils.esc(email)} &bull; Web: ${Utils.esc(website)}
+              </div>
+              <div class="cp-footer-notice">
+                Official Corporate Letterhead &bull; INFORMIX BD &bull; All Rights Reserved
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return { buildInvoiceHTML, buildReceiptHTML, buildQuotationHTML, buildCompanyPadHTML };
   })();
 
   /* ==================================================================
@@ -3237,6 +4029,24 @@
     convertQuotationToInvoice: (id) => QuotationModule.approveAndConvert(id),
     approveQuotation: (id) => QuotationModule.approveAndConvert(id),
 
+    // Company Pads
+    previewCompanyPad: async (id) => {
+      const pad = await Store.getCompanyPad(id);
+      const settings = await Store.getSettings();
+      if (!pad) return;
+      const modal = document.getElementById('companyPadModal');
+      const content = document.getElementById('companyPadPreviewContent');
+      if (modal && content) {
+        content.innerHTML = MinimalLuxuryRenderer.buildCompanyPadHTML(pad, settings, false);
+        modal.dataset.padId = id;
+        modal.style.display = 'flex';
+      }
+    },
+    printCompanyPad: async (id) => CompanyPadModule.printPad(id),
+    downloadCompanyPadPDF: async (id) => CompanyPadModule.downloadPDF(id),
+    editCompanyPad: (id) => CompanyPadModule.editPad(id),
+    deleteCompanyPad: (id) => CompanyPadModule.deletePad(id),
+
     // Receipts
     previewReceipt: async (id) => {
       const r = await Store.getReceipt(id);
@@ -3395,6 +4205,23 @@
       }
     });
 
+    // Company Pad Modal
+    const padModal = document.getElementById('companyPadModal');
+    const padModalClose = document.getElementById('padModalClose');
+    const padModalPrint = document.getElementById('padModalPrint');
+    const padModalPDF = document.getElementById('padModalDownloadPDF');
+
+    if (padModalClose) padModalClose.addEventListener('click', () => { padModal.style.display = 'none'; });
+    if (padModal) padModal.addEventListener('click', (e) => { if (e.target === padModal) padModal.style.display = 'none'; });
+    if (padModalPrint) padModalPrint.addEventListener('click', () => {
+      const id = padModal.dataset.padId;
+      CompanyPadModule.printPad(id);
+    });
+    if (padModalPDF) padModalPDF.addEventListener('click', () => {
+      const id = padModal.dataset.padId;
+      CompanyPadModule.downloadPDF(id);
+    });
+
     // Shortcuts modal
     const shortcutsBtn = document.getElementById('shortcutsBtn');
     const shortcutsModal = document.getElementById('shortcutsModal');
@@ -3410,12 +4237,13 @@
     Utils.registerShortcut('Ctrl+4', () => NavigationModule.navigateTo('customers'), 'Customers');
     Utils.registerShortcut('Ctrl+5', () => NavigationModule.navigateTo('analytics'), 'Analytics');
     Utils.registerShortcut('Ctrl+6', () => NavigationModule.navigateTo('quotations'), 'Quotations');
+    Utils.registerShortcut('Ctrl+7', () => NavigationModule.navigateTo('company-pad'), 'Company Pad');
     Utils.registerShortcut('Ctrl+K', () => NavigationModule.navigateTo('search'), 'Search');
     Utils.registerShortcut('Ctrl+U', () => NavigationModule.navigateTo('users'), 'Users (Super Admin)');
     Utils.registerShortcut('Ctrl+,', () => NavigationModule.navigateTo('settings'), 'Settings');
     Utils.registerShortcut('Ctrl+B', toggleTheme, 'Toggle Theme');
     Utils.registerShortcut('Esc', () => {
-      [invModal, recModal, quotModal, shortcutsModal].forEach(m => { if (m) m.style.display = 'none'; });
+      [invModal, recModal, quotModal, padModal, shortcutsModal].forEach(m => { if (m) m.style.display = 'none'; });
     }, 'Close Modal');
 
     Utils.initShortcuts();
@@ -3429,6 +4257,7 @@
     NavigationModule.init();
     InvoiceModule.init();
     QuotationModule.init();
+    CompanyPadModule.init();
     ReceiptModule.init();
     UserManagementModule.init();
     CustomersModule.init();

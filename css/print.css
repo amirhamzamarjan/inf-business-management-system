@@ -317,4 +317,236 @@
     color: #6b7280 !important;
     page-break-inside: avoid !important;
   }
+
+  /* Company Pad A4 Print Formatting */
+  .company-pad-document {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    min-height: auto !important;
+    display: block !important;
+  }
+
+  .cp-header {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 14pt !important;
+  }
+
+  .cp-header__main {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    padding-bottom: 8pt !important;
+  }
+
+  .cp-header__brand {
+    max-width: 50% !important;
+  }
+
+  .cp-header__logo {
+    max-height: 42pt !important;
+    max-width: 200pt !important;
+    display: block !important;
+    object-fit: contain !important;
+  }
+
+  .cp-header__contact {
+    text-align: right !important;
+    font-size: 7.5pt !important;
+    color: #374151 !important;
+    line-height: 1.4 !important;
+  }
+
+  .cp-contact-row {
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 4pt !important;
+    margin: 1.5pt 0 !important;
+  }
+
+  .cp-brand-bar, .cp-footer-rule {
+    display: flex !important;
+    height: 2.5pt !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cp-bar-black {
+    flex: 1 !important;
+    background: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cp-bar-red {
+    width: 44pt !important;
+    background: #d90429 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cp-bar-cyan {
+    width: 11pt !important;
+    background: #06b6d4 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cp-meta-bar {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    padding: 6pt 0 8pt 0 !important;
+    border-bottom: 0.5pt solid #e2e8f0 !important;
+    margin-bottom: 12pt !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .cp-recipient-box {
+    margin-bottom: 12pt !important;
+    padding: 6pt 10pt !important;
+    background: #f8fafc !important;
+    border-left: 2.5pt solid #0f172a !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .cp-topic-section {
+    margin-bottom: 16pt !important;
+    padding: 8pt 12pt !important;
+    background: #ffffff !important;
+    border-left: 3pt solid #d90429 !important;
+    border-top: 0.5pt solid #f1f5f9 !important;
+    border-bottom: 0.5pt solid #e2e8f0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .cp-topic-badge {
+    font-size: 6.5pt !important;
+    font-weight: 800 !important;
+    color: #d90429 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1pt !important;
+  }
+
+  .cp-topic-title {
+    font-size: 13pt !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    margin: 2pt 0 0 0 !important;
+  }
+
+  .cp-content-body {
+    font-size: 9.5pt !important;
+    line-height: 1.65 !important;
+    color: #111827 !important;
+    text-align: justify !important;
+    orphans: 3 !important;
+    widows: 3 !important;
+    margin-bottom: 18pt !important;
+  }
+
+  .cp-content-body h2 {
+    font-size: 11pt !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    border-bottom: 1pt solid #0f172a !important;
+    padding-bottom: 2pt !important;
+    margin: 14pt 0 6pt 0 !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .cp-content-body h3 {
+    font-size: 10pt !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    margin: 10pt 0 4pt 0 !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .cp-content-body p {
+    margin: 0 0 8pt 0 !important;
+  }
+
+  .cp-content-body ul, .cp-content-body ol {
+    margin: 0 0 8pt 0 !important;
+    padding-left: 18pt !important;
+  }
+
+  .cp-content-body blockquote {
+    margin: 8pt 0 !important;
+    padding: 6pt 10pt !important;
+    border-left: 2pt solid #0f172a !important;
+    background: #f8fafc !important;
+  }
+
+  .cp-signoff-block {
+    margin-top: 20pt !important;
+    margin-bottom: 16pt !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .cp-signoff-wrap {
+    width: 180pt !important;
+  }
+
+  .cp-signoff-seal-space {
+    height: 36pt !important;
+  }
+
+  .cp-signoff-line {
+    border-top: 1pt solid #0f172a !important;
+    margin-bottom: 3pt !important;
+  }
+
+  .cp-signoff-name {
+    font-size: 9pt !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+  }
+
+  .cp-signoff-title {
+    font-size: 7.5pt !important;
+    font-weight: 700 !important;
+    color: #d90429 !important;
+  }
+
+  .cp-footer {
+    margin-top: 16pt !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .cp-footer-body {
+    padding-top: 5pt !important;
+    text-align: center !important;
+  }
+
+  .cp-footer-text {
+    font-size: 6.8pt !important;
+    color: #4b5563 !important;
+  }
+
+  .cp-footer-notice {
+    font-size: 6pt !important;
+    font-weight: 700 !important;
+    color: #94a3b8 !important;
+    letter-spacing: 0.8pt !important;
+    margin-top: 2pt !important;
+  }
 }

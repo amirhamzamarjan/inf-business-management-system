@@ -10,6 +10,7 @@ const Store = (() => {
     invoice: 'ix_invoice_draft',
     quotation: 'ix_quotation_draft',
     receipt: 'ix_receipt_draft',
+    company_pad: 'ix_company_pad_draft',
     theme: 'ix_theme',
   };
 
@@ -58,6 +59,16 @@ const Store = (() => {
   }
   function clearReceiptDraft() {
     try { localStorage.removeItem(DRAFT_KEYS.receipt); } catch (_) {}
+  }
+
+  function getCompanyPadDraft() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEYS.company_pad)) || null; } catch { return null; }
+  }
+  function saveCompanyPadDraft(data) {
+    try { localStorage.setItem(DRAFT_KEYS.company_pad, JSON.stringify(data)); } catch (_) {}
+  }
+  function clearCompanyPadDraft() {
+    try { localStorage.removeItem(DRAFT_KEYS.company_pad); } catch (_) {}
   }
 
   /* ---- Settings Bridge ---- */
@@ -259,6 +270,95 @@ const Store = (() => {
     return result;
   }
 
+  /* ---- Company Pads Bridge (Official Corporate Letterheads) ---- */
+  const LOCAL_COMPANY_PADS_KEY = 'ix_local_company_pads';
+  function getLocalCompanyPads() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_COMPANY_PADS_KEY)) || []; } catch { return []; }
+  }
+  function saveLocalCompanyPads(list) {
+    try { localStorage.setItem(LOCAL_COMPANY_PADS_KEY, JSON.stringify(list)); } catch (_) {}
+  }
+
+  async function getCompanyPads(filters = {}) {
+    try {
+      const fromDb = await SupabaseService.getCompanyPads(filters);
+      if (fromDb && fromDb.length) return fromDb;
+    } catch (_) {}
+    // Fallback to local storage if DB table not yet created
+    let list = getLocalCompanyPads();
+    if (filters.status && filters.status !== 'All') {
+      list = list.filter(p => p.status === filters.status);
+    }
+    if (filters.search) {
+      const s = filters.search.trim().toLowerCase();
+      list = list.filter(p =>
+        (p.pad_number && p.pad_number.toLowerCase().includes(s)) ||
+        (p.topic && p.topic.toLowerCase().includes(s)) ||
+        (p.recipient_name && p.recipient_name.toLowerCase().includes(s)) ||
+        (p.reference_no && p.reference_no.toLowerCase().includes(s))
+      );
+    }
+    return list;
+  }
+
+  async function getCompanyPad(id) {
+    try {
+      const fromDb = await SupabaseService.getCompanyPad(id);
+      if (fromDb) return fromDb;
+    } catch (_) {}
+    return getLocalCompanyPads().find(p => p.id === id) || null;
+  }
+
+  async function generatePadNumber() {
+    try {
+      const num = await SupabaseService.getNextPadNumber();
+      if (num) return num;
+    } catch (_) {}
+    const year = new Date().getFullYear();
+    const count = getLocalCompanyPads().length + 1;
+    return `PAD-${year}-${String(count).padStart(6, '0')}`;
+  }
+
+  async function saveCompanyPad(padData) {
+    let saved = null;
+    try {
+      saved = await SupabaseService.saveCompanyPad(padData);
+    } catch (err) {
+      console.warn('Supabase save company pad failed, saving locally:', err);
+      const list = getLocalCompanyPads();
+      const existingIdx = list.findIndex(p => p.id === padData.id);
+      const profile = await SupabaseService.getCurrentProfile();
+      saved = {
+        ...padData,
+        id: padData.id || `local-pad-${Date.now()}`,
+        prepared_by_name: padData.prepared_by_name || (profile ? profile.full_name : 'Staff'),
+        created_at: padData.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (existingIdx >= 0) {
+        list[existingIdx] = saved;
+      } else {
+        list.unshift(saved);
+      }
+      saveLocalCompanyPads(list);
+    }
+    emit('company_pads:updated', saved);
+    return saved;
+  }
+
+  async function deleteCompanyPad(id) {
+    let result = false;
+    try {
+      result = await SupabaseService.deleteCompanyPad(id);
+    } catch (_) {
+      const list = getLocalCompanyPads().filter(p => p.id !== id);
+      saveLocalCompanyPads(list);
+      result = true;
+    }
+    emit('company_pads:updated', { deletedId: id });
+    return result;
+  }
+
   /* ---- Money Receipts Bridge ---- */
   async function getReceipts(filters = {}) {
     return SupabaseService.getReceipts(filters);
@@ -402,6 +502,15 @@ const Store = (() => {
     saveQuotation,
     deleteQuotation,
     convertQuotationToInvoice,
+    // Company Pads
+    getCompanyPadDraft,
+    saveCompanyPadDraft,
+    clearCompanyPadDraft,
+    getCompanyPads,
+    getCompanyPad,
+    generatePadNumber,
+    saveCompanyPad,
+    deleteCompanyPad,
     // Receipts
     getReceipts,
     getReceipt,
